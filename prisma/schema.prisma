@@ -1,0 +1,284 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProgramType {
+  business_directory
+  youth_database
+  event_directory
+  vendor_directory
+}
+
+enum ProgramStatus {
+  draft
+  active
+  archived
+}
+
+enum BusinessStatus {
+  draft
+  pending_review
+  published
+  suspended
+}
+
+enum VerificationStatus {
+  unclaimed
+  claimed
+  verified
+}
+
+enum SubmissionStatus {
+  pending_review
+  approved
+  rejected
+}
+
+enum ChangeRequestStatus {
+  pending_review
+  approved
+  rejected
+}
+
+enum AdminRole {
+  super_admin
+  org_admin
+  reviewer
+}
+
+enum AuditAction {
+  created
+  updated
+  approved
+  rejected
+  suspended
+  published
+  verified
+  deleted
+  login
+}
+
+model Organization {
+  id          String      @id @default(cuid())
+  name        String
+  slug        String      @unique
+  status      String      @default("active")
+  settings    Json?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  programs    Program[]
+  adminUsers  AdminUser[]
+  auditLogs   AuditLog[]
+}
+
+model Program {
+  id             String              @id @default(cuid())
+  organizationId String
+  name           String
+  slug           String
+  type           ProgramType
+  status         ProgramStatus       @default(draft)
+  settings       Json?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  businesses     Business[]
+  categories     BusinessCategory[]
+  submissions    BusinessSubmission[]
+  createdFiles   FileAsset[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@index([status])
+}
+
+model Business {
+  id                 String                @id @default(cuid())
+  programId          String
+  name               String
+  slug               String
+  description        String?
+  categories         String[]
+  services           String[]
+  phone              String?
+  email              String?
+  website            String?
+  address            String?
+  city               String?
+  state              String?
+  zip                String?
+  status             BusinessStatus        @default(draft)
+  verificationStatus VerificationStatus    @default(unclaimed)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  program            Program               @relation(fields: [programId], references: [id], onDelete: Cascade)
+  contacts           BusinessContact[]
+  changeRequests     BusinessChangeRequest[]
+  editTokens         BusinessEditToken[]
+  fileAssets         FileAsset[]
+
+  @@unique([programId, slug])
+  @@index([programId, status])
+  @@index([programId, verificationStatus])
+}
+
+model BusinessContact {
+  id          String    @id @default(cuid())
+  businessId  String
+  firstName   String
+  lastName    String?
+  title       String?
+  email       String?
+  phone       String?
+  isPrimary   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+}
+
+model BusinessCategory {
+  id          String    @id @default(cuid())
+  programId   String
+  name        String
+  slug        String
+  description String?
+  isActive    Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  program     Program   @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  @@unique([programId, slug])
+  @@index([programId, isActive])
+}
+
+model BusinessSubmission {
+  id                String            @id @default(cuid())
+  programId         String
+  payload           Json
+  submittedByName   String?
+  submittedByEmail  String?
+  submittedByPhone  String?
+  status            SubmissionStatus  @default(pending_review)
+  reviewNotes       String?
+  reviewedAt        DateTime?
+  reviewedByAdminId String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  program           Program           @relation(fields: [programId], references: [id], onDelete: Cascade)
+  reviewedByAdmin   AdminUser?        @relation("SubmissionReviewedBy", fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([programId, status])
+}
+
+model BusinessChangeRequest {
+  id                String               @id @default(cuid())
+  businessId        String
+  payload           Json
+  requestedByName   String?
+  requestedByEmail  String?
+  status            ChangeRequestStatus  @default(pending_review)
+  reviewNotes       String?
+  reviewedAt        DateTime?
+  reviewedByAdminId String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  business          Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  reviewedByAdmin   AdminUser?           @relation("ChangeRequestReviewedBy", fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, status])
+}
+
+model BusinessEditToken {
+  id           String    @id @default(cuid())
+  businessId   String
+  tokenHash    String
+  expiresAt    DateTime
+  usedAt       DateTime?
+  createdAt    DateTime  @default(now())
+
+  business     Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String?
+  programId      String?
+  actorAdminId   String?
+  action         AuditAction
+  targetType     String
+  targetId       String
+  beforeData     Json?
+  afterData      Json?
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  actorAdmin     AdminUser?    @relation(fields: [actorAdminId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([programId])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+}
+
+model FileAsset {
+  id             String    @id @default(cuid())
+  programId      String
+  businessId     String?
+  uploadedById   String?
+  storageProvider String
+  bucket         String
+  objectKey      String
+  mimeType       String
+  sizeBytes      Int
+  publicUrl      String?
+  metadata       Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  program        Program   @relation(fields: [programId], references: [id], onDelete: Cascade)
+  business       Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  uploadedBy     AdminUser? @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([programId])
+  @@index([businessId])
+}
+
+model AdminUser {
+  id                       String                 @id @default(cuid())
+  organizationId           String
+  email                    String                 @unique
+  passwordHash             String
+  firstName                String?
+  lastName                 String?
+  role                     AdminRole              @default(reviewer)
+  isActive                 Boolean                @default(true)
+  lastLoginAt              DateTime?
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+
+  organization             Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reviewedSubmissions      BusinessSubmission[]   @relation("SubmissionReviewedBy")
+  reviewedChangeRequests   BusinessChangeRequest[] @relation("ChangeRequestReviewedBy")
+  uploadedFiles            FileAsset[]
+  auditLogs                AuditLog[]
+
+  @@index([organizationId, role])
+}
