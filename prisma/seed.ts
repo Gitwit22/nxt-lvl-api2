@@ -69,10 +69,10 @@ async function main() {
     });
   }
 
-  const adminPassword = await hash('Admin1234!', 10);
+  const adminPassword = await hash('4755Dett', 10);
 
   await prisma.adminUser.upsert({
-    where: { email: 'admin@nxtlvl.local' },
+    where: { email: 'nxtlvltechllc@gmail.com' },
     update: {
       isActive: true,
       role: 'super_admin',
@@ -80,7 +80,7 @@ async function main() {
     },
     create: {
       organizationId: organization.id,
-      email: 'admin@nxtlvl.local',
+      email: 'nxtlvltechllc@gmail.com',
       passwordHash: adminPassword,
       role: 'super_admin',
       firstName: 'Platform',
