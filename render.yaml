@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: nxt-lvl-api2
+    runtime: node
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npx prisma db push --accept-data-loss && node dist/main
+    envVars:
+      - key: NODE_ENV
+        value: production
