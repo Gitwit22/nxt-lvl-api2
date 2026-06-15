@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
 import { CreateBusinessSubmissionDto } from './dto/create-business-submission.dto';
 import { BusinessSubmissionsService } from './business-submissions.service';
@@ -23,13 +23,13 @@ export class BusinessSubmissionsController {
 
   @UseGuards(AdminJwtGuard)
   @Patch('admin/submissions/:id/approve')
-  approve(@Param('id') id: string, @Req() req: { user: { sub: string } }) {
-    return this.submissionsService.approveSubmission(id, req.user.sub);
+  approve(@Param('id') id: string, @Headers('x-admin-id') adminId: string) {
+    return this.submissionsService.approveSubmission(id, adminId);
   }
 
   @UseGuards(AdminJwtGuard)
   @Patch('admin/submissions/:id/reject')
-  reject(@Param('id') id: string, @Req() req: { user: { sub: string } }) {
-    return this.submissionsService.rejectSubmission(id, req.user.sub);
+  reject(@Param('id') id: string, @Headers('x-admin-id') adminId: string) {
+    return this.submissionsService.rejectSubmission(id, adminId);
   }
 }
