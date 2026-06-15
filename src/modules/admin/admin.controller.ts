@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, UseGuards } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
 
@@ -21,5 +21,11 @@ export class AdminController {
       where: { id: businessId },
       data: { updatedAt: new Date() },
     });
+  }
+
+  @Delete('businesses/:businessId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteBusiness(@Param('businessId') businessId: string) {
+    await this.prisma.business.delete({ where: { id: businessId } });
   }
 }
