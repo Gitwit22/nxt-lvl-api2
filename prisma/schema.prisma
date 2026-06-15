@@ -99,24 +99,44 @@ model Program {
 }
 
 model Business {
-  id                 String                @id @default(cuid())
-  programId          String
-  name               String
-  slug               String
-  description        String?
-  categories         String[]
-  services           String[]
-  phone              String?
-  email              String?
-  website            String?
-  address            String?
-  city               String?
-  state              String?
-  zip                String?
-  status             BusinessStatus        @default(draft)
-  verificationStatus VerificationStatus    @default(unclaimed)
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
+  id                          String                @id @default(cuid())
+  programId                   String
+  name                        String
+  slug                        String
+  description                 String?
+  categories                  String[]
+  services                    String[]
+  tags                        String[]              @default([])
+  phone                       String?
+  email                       String?
+  website                     String?
+  address                     String?
+  city                        String?
+  state                       String?
+  zip                         String?
+  isBlackAmericanOwned        Boolean?
+  ownershipConfirmedAt        DateTime?
+  logoUrl                     String?
+  coverImageUrl               String?
+  yearEstablished             Int?
+  serviceArea                 String?
+  bookingLink                 String?
+  facebook                    String?
+  instagram                   String?
+  linkedin                    String?
+  tiktok                      String?
+  youtube                     String?
+  isOnlineOnly                Boolean?
+  isMobile                    Boolean?
+  appointmentRequired         Boolean?
+  deliveryAvailable           Boolean?
+  acceptingNewCustomers       Boolean?
+  businessHours               Json?
+  profileCompletionPercentage Int                   @default(0)
+  status                      BusinessStatus        @default(draft)
+  verificationStatus          VerificationStatus    @default(unclaimed)
+  createdAt                   DateTime              @default(now())
+  updatedAt                   DateTime              @updatedAt
 
   program            Program               @relation(fields: [programId], references: [id], onDelete: Cascade)
   contacts           BusinessContact[]

@@ -3,6 +3,37 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateBusinessSubmissionDto } from './dto/create-business-submission.dto';
 
+function calculateCompletionPercentage(payload: Record<string, unknown>): number {
+  let score = 0;
+
+  const name = typeof payload.name === 'string' && payload.name.trim();
+  const phone = typeof payload.phone === 'string' && payload.phone.trim();
+  const email = typeof payload.email === 'string' && payload.email.trim();
+  const city = typeof payload.city === 'string' && payload.city.trim();
+  const state = typeof payload.state === 'string' && payload.state.trim();
+  const isOwned = payload.isBlackAmericanOwned === true;
+
+  if (name && (phone || email) && city && state && isOwned) score += 40;
+  if (Array.isArray(payload.categories) ? (payload.categories as string[]).length > 0 : typeof payload.category === 'string' && (payload.category as string).trim()) score += 10;
+  if (typeof payload.description === 'string' && (payload.description as string).trim()) score += 10;
+  if (typeof payload.logoUrl === 'string' && (payload.logoUrl as string).trim()) score += 10;
+  if (
+    (typeof payload.website === 'string' && (payload.website as string).trim()) ||
+    (typeof payload.facebook === 'string' && (payload.facebook as string).trim()) ||
+    (typeof payload.instagram === 'string' && (payload.instagram as string).trim()) ||
+    (typeof payload.linkedin === 'string' && (payload.linkedin as string).trim()) ||
+    (typeof payload.tiktok === 'string' && (payload.tiktok as string).trim()) ||
+    (typeof payload.youtube === 'string' && (payload.youtube as string).trim())
+  ) score += 10;
+  if (
+    (Array.isArray(payload.services) && (payload.services as unknown[]).length > 0) ||
+    (typeof payload.productsServices === 'string' && (payload.productsServices as string).trim())
+  ) score += 10;
+  if (payload.businessHours && typeof payload.businessHours === 'object') score += 10;
+
+  return score;
+}
+
 @Injectable()
 export class BusinessSubmissionsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -45,6 +76,14 @@ export class BusinessSubmissionsService {
       '-' +
       submissionId.slice(-6);
 
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? String(v) : undefined);
+    const bool = (v: unknown) => (typeof v === 'boolean' ? v : undefined);
+    const num = (v: unknown) => (typeof v === 'number' ? v : undefined);
+    const arr = (v: unknown): string[] =>
+      Array.isArray(v) ? (v as unknown[]).filter((x): x is string => typeof x === 'string') : [];
+
+    const profileCompletionPercentage = calculateCompletionPercentage(payload);
+
     const [, business] = await this.prisma.$transaction([
       this.prisma.businessSubmission.update({
         where: { id: submissionId },
@@ -55,13 +94,36 @@ export class BusinessSubmissionsService {
           programId: submission.programId,
           name,
           slug,
-          description: payload.description ? String(payload.description) : undefined,
-          categories: payload.category ? [String(payload.category)] : [],
-          phone: payload.phone ? String(payload.phone) : undefined,
-          email: payload.email ? String(payload.email) : undefined,
-          website: payload.website ? String(payload.website) : undefined,
-          city: payload.city ? String(payload.city) : undefined,
-          state: payload.state ? String(payload.state) : undefined,
+          description: str(payload.description),
+          categories: payload.category ? [String(payload.category)] : arr(payload.categories),
+          services: arr(payload.services),
+          tags: arr(payload.tags),
+          phone: str(payload.phone),
+          email: str(payload.email),
+          website: str(payload.website),
+          city: str(payload.city),
+          state: str(payload.state),
+          isBlackAmericanOwned: bool(payload.isBlackAmericanOwned),
+          ownershipConfirmedAt: payload.isBlackAmericanOwned === true ? new Date() : undefined,
+          logoUrl: str(payload.logoUrl),
+          coverImageUrl: str(payload.coverImageUrl),
+          yearEstablished: num(payload.yearEstablished),
+          serviceArea: str(payload.serviceArea),
+          bookingLink: str(payload.bookingLink),
+          facebook: str(payload.facebook),
+          instagram: str(payload.instagram),
+          linkedin: str(payload.linkedin),
+          tiktok: str(payload.tiktok),
+          youtube: str(payload.youtube),
+          isOnlineOnly: bool(payload.isOnlineOnly),
+          isMobile: bool(payload.isMobile),
+          appointmentRequired: bool(payload.appointmentRequired),
+          deliveryAvailable: bool(payload.deliveryAvailable),
+          acceptingNewCustomers: bool(payload.acceptingNewCustomers),
+          businessHours: payload.businessHours
+            ? (payload.businessHours as Prisma.InputJsonValue)
+            : undefined,
+          profileCompletionPercentage,
           status: 'published',
         },
       }),
