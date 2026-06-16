@@ -35,7 +35,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       success: false,
       error: {
         code: 'INTERNAL_SERVER_ERROR',
-        message: 'An unexpected error occurred.',
+        message: exception instanceof Error ? exception.message : 'An unexpected error occurred.',
+        detail: exception instanceof Error ? exception.constructor.name : undefined,
       },
     });
   }
