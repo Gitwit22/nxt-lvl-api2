@@ -5,7 +5,7 @@ export const environmentSchema = z.object({
   PORT: z.coerce.number().default(4000),
   DATABASE_URL: z.string().min(1),
   CORS_ORIGIN: z.string().optional(),
-  JWT_SECRET: z.string().min(8),
+  JWT_SECRET: z.string().min(32),
   JWT_EXPIRES_IN: z.string().default('1d'),
   // Email / notification-core
   RESEND_API_KEY: z.string().optional(),

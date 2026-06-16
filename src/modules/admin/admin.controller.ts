@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, HttpCode, HttpStatus, NotFoundException, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, NotFoundException, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { randomBytes, createHash } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
@@ -12,6 +12,17 @@ export class AdminController {
     private readonly notifications: NotificationsService,
   ) {}
 
+  // Fetch all businesses (all statuses) by program slug — used by admin dashboard
+  @Get('programs/by-slug/:programSlug/businesses')
+  async getProgramBusinessesBySlug(@Param('programSlug') programSlug: string) {
+    const program = await this.prisma.program.findFirst({ where: { slug: programSlug } });
+    if (!program) throw new NotFoundException('Program not found.');
+    return this.prisma.business.findMany({
+      where: { programId: program.id },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
   @Get('programs/:programId/businesses')
   getProgramBusinesses(@Param('programId') programId: string) {
     return this.prisma.business.findMany({
@@ -21,10 +32,25 @@ export class AdminController {
   }
 
   @Patch('businesses/:businessId')
-  async touchBusiness(@Param('businessId') businessId: string) {
+  async updateBusiness(
+    @Param('businessId') businessId: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    const allowed = [
+      'name', 'description', 'categories', 'services', 'tags',
+      'phone', 'email', 'website', 'address', 'city', 'state', 'zip',
+      'isBlackAmericanOwned', 'logoUrl', 'coverImageUrl', 'yearEstablished',
+      'serviceArea', 'bookingLink', 'facebook', 'instagram', 'linkedin',
+      'tiktok', 'youtube', 'isOnlineOnly', 'isMobile', 'appointmentRequired',
+      'deliveryAvailable', 'acceptingNewCustomers', 'businessHours',
+    ];
+    const data: Record<string, unknown> = { updatedAt: new Date() };
+    for (const key of allowed) {
+      if (key in body) data[key] = body[key];
+    }
     return this.prisma.business.update({
       where: { id: businessId },
-      data: { updatedAt: new Date() },
+      data,
     });
   }
 

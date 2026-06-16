@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
 import { ProgramsService } from './programs.service';
 import { CreateProgramDto } from './dto/create-program.dto';
 import { BusinessesService } from '../businesses/businesses.service';
@@ -15,6 +16,7 @@ export class ProgramsController {
     return this.programsService.listPrograms();
   }
 
+  @UseGuards(AdminJwtGuard)
   @Post()
   createProgram(@Body() dto: CreateProgramDto) {
     return this.programsService.createProgram(dto);

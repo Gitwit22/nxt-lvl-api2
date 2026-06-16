@@ -1,4 +1,5 @@
-import { Body, Controller, Param, Post } from '@nestjs/common';
+import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
+import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
 import { BusinessesService } from './businesses.service';
 import { CreateBusinessDto } from './dto/create-business.dto';
 import { SuggestUpdateDto } from './dto/suggest-update.dto';
@@ -7,6 +8,7 @@ import { SuggestUpdateDto } from './dto/suggest-update.dto';
 export class BusinessesController {
   constructor(private readonly businessesService: BusinessesService) {}
 
+  @UseGuards(AdminJwtGuard)
   @Post('businesses')
   createBusiness(@Body() dto: CreateBusinessDto) {
     return this.businessesService.createBusiness(dto);

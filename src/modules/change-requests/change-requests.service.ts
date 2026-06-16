@@ -1,6 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
+/** Only these fields may be applied from a business owner's change request. */
+const SAFE_PAYLOAD_FIELDS = [
+  'name', 'description', 'categories', 'services', 'tags',
+  'phone', 'email', 'website', 'address', 'city', 'state', 'zip',
+  'isBlackAmericanOwned', 'logoUrl', 'coverImageUrl', 'yearEstablished',
+  'serviceArea', 'bookingLink', 'facebook', 'instagram', 'linkedin',
+  'tiktok', 'youtube', 'isOnlineOnly', 'isMobile', 'appointmentRequired',
+  'deliveryAvailable', 'acceptingNewCustomers', 'businessHours',
+] as const;
+
 @Injectable()
 export class ChangeRequestsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -31,7 +41,14 @@ export class ChangeRequestsService {
 
       await tx.business.update({
         where: { id: request.businessId },
-        data: request.payload as Record<string, unknown>,
+        data: (() => {
+          const raw = request.payload as Record<string, unknown>;
+          const safe: Record<string, unknown> = { updatedAt: new Date() };
+          for (const field of SAFE_PAYLOAD_FIELDS) {
+            if (field in raw) safe[field] = raw[field];
+          }
+          return safe;
+        })(),
       });
 
       return tx.businessChangeRequest.findUnique({ where: { id: requestId } });
