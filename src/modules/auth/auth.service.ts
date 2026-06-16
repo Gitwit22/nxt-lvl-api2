@@ -1,52 +1,61 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { compare } from 'bcrypt';
-import { sign } from 'jsonwebtoken';
+import { LoginUseCase, defaultAuthConfig } from '@nxtlvl/auth-core';
+import type { LoginCredentials } from '@nxtlvl/auth-core';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaAuthRepository } from './infrastructure/prisma-auth-repository';
+import { BcryptPasswordHasher } from './infrastructure/bcrypt-password-hasher';
+import { JwtTokenService } from './infrastructure/jwt-token-service';
+import { ConsoleAuditLogger } from './infrastructure/console-audit-logger';
 import { LoginDto } from './dto/login.dto';
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly loginUseCase: LoginUseCase;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly authRepository: PrismaAuthRepository,
+    private readonly passwordHasher: BcryptPasswordHasher,
+    private readonly tokenService: JwtTokenService,
+    private readonly auditLogger: ConsoleAuditLogger,
+  ) {
+    this.loginUseCase = new LoginUseCase({
+      authRepository: this.authRepository,
+      passwordHasher: this.passwordHasher,
+      tokenService: this.tokenService,
+      auditLogger: this.auditLogger,
+      config: {
+        ...defaultAuthConfig,
+        issuer: 'fbappinc',
+        allowLogin: true,
+        requireVerifiedEmailForLogin: false,
+        sessionTtlSeconds: 86400,
+      },
+    });
+  }
 
   async login(dto: LoginDto) {
+    const credentials: LoginCredentials = { email: dto.email, password: dto.password };
+    const result = await this.loginUseCase.execute(credentials);
+
+    if (!result.success) {
+      throw new UnauthorizedException(result.error.message);
+    }
+
+    // Fetch org context not stored in JWT
     const admin = await this.prisma.adminUser.findUnique({
-      where: { email: dto.email.toLowerCase() },
+      where: { id: result.user.id },
     });
-
-    if (!admin || !admin.isActive) {
-      throw new UnauthorizedException('Invalid credentials.');
-    }
-
-    const isValidPassword = await compare(dto.password, admin.passwordHash);
-    if (!isValidPassword) {
-      throw new UnauthorizedException('Invalid credentials.');
-    }
-
-    await this.prisma.adminUser.update({
-      where: { id: admin.id },
-      data: { lastLoginAt: new Date() },
-    });
-
-    const token = sign(
-      {
-        sub: admin.id,
-        role: admin.role,
-        organizationId: admin.organizationId,
-      },
-      process.env.JWT_SECRET as string,
-      {
-        expiresIn: (process.env.JWT_EXPIRES_IN ?? '1d') as unknown as number,
-      },
-    );
 
     return {
-      accessToken: token,
+      accessToken: result.session.accessToken,
       admin: {
-        id: admin.id,
-        email: admin.email,
-        role: admin.role,
-        organizationId: admin.organizationId,
+        id: result.user.id,
+        email: result.user.email,
+        role: result.user.roles[0] ?? 'reviewer',
+        organizationId: admin?.organizationId,
       },
     };
   }
 }
+

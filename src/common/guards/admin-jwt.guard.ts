@@ -1,9 +1,12 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
-import { verify } from 'jsonwebtoken';
+import { JwtTokenService } from '../../modules/auth/infrastructure/jwt-token-service';
+
+// JwtTokenService has no injected deps — reads from process.env
+const tokenService = new JwtTokenService();
 
 @Injectable()
 export class AdminJwtGuard implements CanActivate {
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<{ headers: Record<string, string | undefined> }>();
     const authHeader = request.headers.authorization;
 
@@ -14,7 +17,7 @@ export class AdminJwtGuard implements CanActivate {
     const token = authHeader.substring(7);
 
     try {
-      const payload = verify(token, process.env.JWT_SECRET as string) as { sub: string };
+      const payload = await tokenService.verify(token);
       request.headers['x-admin-id'] = payload.sub;
       return true;
     } catch {
@@ -22,3 +25,4 @@ export class AdminJwtGuard implements CanActivate {
     }
   }
 }
+

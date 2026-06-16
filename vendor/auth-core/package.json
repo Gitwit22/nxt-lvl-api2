@@ -1,0 +1,20 @@
+{
+  "name": "@nxtlvl/auth-core",
+  "version": "0.0.1",
+  "description": "Reusable authentication domain and application contracts for Nxt Lvl apps.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build tsconfig.json"
+  }
+}
