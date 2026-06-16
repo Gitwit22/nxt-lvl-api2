@@ -4,10 +4,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateBusinessDto } from './dto/create-business.dto';
 import { SuggestUpdateDto } from './dto/suggest-update.dto';
 import { randomBytes, createHash } from 'crypto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class BusinessesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   createBusiness(dto: CreateBusinessDto) {
     return this.prisma.business.create({
@@ -97,6 +101,15 @@ export class BusinessesService {
         expiresAt,
       },
     });
+
+    if (business.email) {
+      await this.notifications.sendEditLink({
+        to: business.email,
+        businessName: business.name,
+        token,
+        expiresAt,
+      }).catch(() => undefined);
+    }
 
     return {
       token,

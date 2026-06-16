@@ -8,6 +8,18 @@ import { SubmitEditTokenDto } from './dto/submit-edit-token.dto';
 export class EditTokensService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async validateAndGetBusiness(token: string) {
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const editToken = await this.prisma.businessEditToken.findFirst({
+      where: { tokenHash },
+      include: { business: true },
+    });
+    if (!editToken) throw new NotFoundException('Edit link not found.');
+    if (editToken.usedAt) throw new UnauthorizedException('Edit link already used.');
+    if (editToken.expiresAt.getTime() < Date.now()) throw new UnauthorizedException('Edit link expired.');
+    return editToken.business;
+  }
+
   async submit(token: string, dto: SubmitEditTokenDto) {
     const tokenHash = createHash('sha256').update(token).digest('hex');
 
