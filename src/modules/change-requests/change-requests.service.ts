@@ -11,6 +11,14 @@ const SAFE_PAYLOAD_FIELDS = [
   'deliveryAvailable', 'acceptingNewCustomers', 'businessHours',
 ] as const;
 
+function withUrlProtocol(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
 @Injectable()
 export class ChangeRequestsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -44,8 +52,21 @@ export class ChangeRequestsService {
         data: (() => {
           const raw = request.payload as Record<string, unknown>;
           const safe: Record<string, unknown> = { updatedAt: new Date() };
+          const urlFields = new Set([
+            'website',
+            'logoUrl',
+            'coverImageUrl',
+            'bookingLink',
+            'facebook',
+            'instagram',
+            'linkedin',
+            'tiktok',
+            'youtube',
+          ]);
           for (const field of SAFE_PAYLOAD_FIELDS) {
-            if (field in raw) safe[field] = raw[field];
+            if (field in raw) {
+              safe[field] = urlFields.has(field) ? withUrlProtocol(raw[field]) : raw[field];
+            }
           }
           return safe;
         })(),

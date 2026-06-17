@@ -4,6 +4,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
 import { NotificationsService } from '../notifications/notifications.service';
 
+function withUrlProtocol(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
 @Controller('admin')
 @UseGuards(AdminJwtGuard)
 export class AdminController {
@@ -45,8 +53,21 @@ export class AdminController {
       'deliveryAvailable', 'acceptingNewCustomers', 'businessHours',
     ];
     const data: Record<string, unknown> = { updatedAt: new Date() };
+    const urlFields = new Set([
+      'website',
+      'logoUrl',
+      'coverImageUrl',
+      'bookingLink',
+      'facebook',
+      'instagram',
+      'linkedin',
+      'tiktok',
+      'youtube',
+    ]);
     for (const key of allowed) {
-      if (key in body) data[key] = body[key];
+      if (key in body) {
+        data[key] = urlFields.has(key) ? withUrlProtocol(body[key]) : body[key];
+      }
     }
     return this.prisma.business.update({
       where: { id: businessId },

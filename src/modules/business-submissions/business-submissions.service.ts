@@ -3,6 +3,14 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateBusinessSubmissionDto } from './dto/create-business-submission.dto';
 
+function withUrlProtocol(value?: string): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
 function calculateCompletionPercentage(payload: Record<string, unknown>): number {
   let score = 0;
 
@@ -77,6 +85,7 @@ export class BusinessSubmissionsService {
       submissionId.slice(-6);
 
     const str = (v: unknown) => (typeof v === 'string' && v.trim() ? String(v) : undefined);
+    const url = (v: unknown) => withUrlProtocol(str(v));
     const bool = (v: unknown) => (typeof v === 'boolean' ? v : undefined);
     const num = (v: unknown) => (typeof v === 'number' ? v : undefined);
     const arr = (v: unknown): string[] =>
@@ -100,23 +109,23 @@ export class BusinessSubmissionsService {
           tags: arr(payload.tags),
           phone: str(payload.phone),
           email: str(payload.email),
-          website: str(payload.website),
+          website: url(payload.website),
           address: str(payload.address),
           city: str(payload.city),
           state: str(payload.state),
           zip: str(payload.zip),
           isBlackAmericanOwned: bool(payload.isBlackAmericanOwned),
           ownershipConfirmedAt: payload.isBlackAmericanOwned === true ? new Date() : undefined,
-          logoUrl: str(payload.logoUrl),
-          coverImageUrl: str(payload.coverImageUrl),
+          logoUrl: url(payload.logoUrl),
+          coverImageUrl: url(payload.coverImageUrl),
           yearEstablished: num(payload.yearEstablished),
           serviceArea: str(payload.serviceArea),
-          bookingLink: str(payload.bookingLink),
-          facebook: str(payload.facebook),
-          instagram: str(payload.instagram),
-          linkedin: str(payload.linkedin),
-          tiktok: str(payload.tiktok),
-          youtube: str(payload.youtube),
+          bookingLink: url(payload.bookingLink),
+          facebook: url(payload.facebook),
+          instagram: url(payload.instagram),
+          linkedin: url(payload.linkedin),
+          tiktok: url(payload.tiktok),
+          youtube: url(payload.youtube),
           isOnlineOnly: bool(payload.isOnlineOnly),
           isMobile: bool(payload.isMobile),
           appointmentRequired: bool(payload.appointmentRequired),
