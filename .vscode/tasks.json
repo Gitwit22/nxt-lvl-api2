@@ -1,0 +1,53 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Git commit and push package.json",
+			"type": "shell",
+			"command": "cd c:\\Users\\User\\Desktop\\Nxt\\ Lvl\\ Technology\\ Solutions\\nxt-lvl-api2 && git add package.json && git commit -m \"fix: npm install in build script for Render\" && git push origin main",
+			"group": "build"
+		},
+		{
+			"label": "Commit and push package.json",
+			"type": "shell",
+			"command": "Set-Location \"c:\\Users\\User\\Desktop\\Nxt Lvl Technology Solutions\\nxt-lvl-api2\"; git add package.json; git commit -m \"fix: npm install in build script for Render\"; git push origin main",
+			"group": "build"
+		},
+		{
+			"label": "Push package.json changes",
+			"type": "shell",
+			"command": "cd \"c:\\Users\\User\\Desktop\\Nxt Lvl Technology Solutions\\nxt-lvl-api2\"; git status; git add package.json; git commit -m fix_npm_install_in_build_for_Render; git push origin main",
+			"group": "build"
+		},
+		{
+			"label": "Check git status and stage changes",
+			"type": "shell",
+			"command": "pushd \"c:\\Users\\User\\Desktop\\Nxt Lvl Technology Solutions\\nxt-lvl-api2\"; git status; git add .; git status",
+			"group": "build"
+		},
+		{
+			"label": "Git diff package.json",
+			"type": "shell",
+			"command": "$dir = 'c:\\Users\\User\\Desktop\\Nxt Lvl Technology Solutions\\nxt-lvl-api2'; cd $dir; git diff package.json; echo 'END_DIFF'",
+			"group": "build"
+		},
+		{
+			"label": "Check last commit content",
+			"type": "shell",
+			"command": "$dir = 'c:\\Users\\User\\Desktop\\Nxt Lvl Technology Solutions\\nxt-lvl-api2'; cd $dir; git log --oneline -5; echo '---'; git show HEAD:package.json | grep -A2 '\"build\"'",
+			"group": "build"
+		},
+		{
+			"label": "View build script in HEAD",
+			"type": "shell",
+			"command": "$dir = 'c:\\Users\\User\\Desktop\\Nxt Lvl Technology Solutions\\nxt-lvl-api2'; cd $dir; git show HEAD:package.json | Select-String -Pattern 'build' -Context 0,1",
+			"group": "build"
+		},
+		{
+			"label": "Check git status",
+			"type": "shell",
+			"command": "$dir = 'c:\\Users\\User\\Desktop\\Nxt Lvl Technology Solutions\\nxt-lvl-api2'; cd $dir; git status",
+			"group": "build"
+		}
+	]
+}
