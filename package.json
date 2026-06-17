@@ -4,7 +4,7 @@
   "description": "Program-based API for NXT LVL products",
   "main": "dist/main.js",
   "scripts": {
-    "build": "prisma generate && prisma db push --accept-data-loss && nest build",
+    "build": "npm install --no-audit --no-fund && prisma generate && prisma db push --accept-data-loss && nest build",
     "start": "node dist/main",
     "start:prod": "npx prisma db push --accept-data-loss && node dist/main",
     "start:dev": "nest start --watch",
@@ -48,7 +48,6 @@
     "@nestjs/testing": "^11.1.26",
     "@types/bcrypt": "^6.0.0",
     "@types/express": "^5.0.6",
-    "@types/helmet": "^0.0.48",
     "@types/jest": "^30.0.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.9.2",
