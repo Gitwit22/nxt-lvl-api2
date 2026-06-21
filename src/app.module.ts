@@ -14,6 +14,7 @@ import { HealthModule } from './modules/health/health.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { ProgramsModule } from './modules/programs/programs.module';
+import { CinemaStudioModule } from './modules/cinema-studio/cinema-studio.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -28,6 +29,7 @@ import { PrismaModule } from './prisma/prisma.module';
     AuthModule,
     OrganizationsModule,
     ProgramsModule,
+    CinemaStudioModule,
     BusinessesModule,
     ContactsModule,
     CategoriesModule,

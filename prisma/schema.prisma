@@ -302,3 +302,11 @@ model AdminUser {
 
   @@index([organizationId, role])
 }
+
+model CinemaStudioState {
+  id          String   @id @default(cuid())
+  workspaceId String   @unique
+  state       Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
