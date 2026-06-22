@@ -310,3 +310,11 @@ model CinemaStudioState {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+model StudioCoreState {
+  id          String   @id @default(cuid())
+  workspaceId String   @unique
+  state       Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

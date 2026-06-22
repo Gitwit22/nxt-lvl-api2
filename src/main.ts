@@ -6,6 +6,32 @@ import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 
+function normalizeOrigin(origin: string): string {
+  return origin.trim().replace(/\/+$/, '').toLowerCase();
+}
+
+function isOriginAllowed(requestOrigin: string, configuredOrigins: string[]): boolean {
+  const normalizedRequestOrigin = normalizeOrigin(requestOrigin);
+
+  return configuredOrigins.some((configuredOrigin) => {
+    const normalizedConfiguredOrigin = normalizeOrigin(configuredOrigin);
+
+    if (normalizedConfiguredOrigin === '*') {
+      return true;
+    }
+
+    // Support wildcard subdomain rules such as https://*.pages.dev
+    if (normalizedConfiguredOrigin.includes('*')) {
+      const pattern = normalizedConfiguredOrigin
+        .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*/g, '.*');
+      return new RegExp(`^${pattern}$`, 'i').test(normalizedRequestOrigin);
+    }
+
+    return normalizedConfiguredOrigin === normalizedRequestOrigin;
+  });
+}
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
@@ -22,8 +48,20 @@ async function bootstrap() {
     .filter((origin) => origin.length > 0);
 
   app.enableCors({
-    origin: corsOrigins.length > 0 ? corsOrigins : true,
+    origin: (
+      requestOrigin: string | undefined,
+      callback: (error: Error | null, allow?: boolean) => void,
+    ) => {
+      if (!requestOrigin || corsOrigins.length === 0) {
+        callback(null, true);
+        return;
+      }
+
+      callback(null, isOriginAllowed(requestOrigin, corsOrigins));
+    },
     credentials: true,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   app.setGlobalPrefix('api/v1');
