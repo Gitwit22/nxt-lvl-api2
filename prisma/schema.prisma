@@ -320,9 +320,30 @@ model StudioCoreState {
 }
 
 model ClipMagicState {
-  id          String   @id @default(cuid())
-  workspaceId String   @unique
+  id          String                  @id @default(cuid())
+  workspaceId String                  @unique
   state       Json
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  musicFiles  ClipMagicMusicFile[]
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+}
+
+model ClipMagicMusicFile {
+  id          String          @id @default(cuid())
+  workspaceId String
+  trackId     String
+  fileName    String
+  mimeType    String          @default("audio/mpeg")
+  fileSize    Int
+  duration    Int             @default(150)
+  bpm         Int             @default(100)
+  mood        String          @default("Custom")
+  dataUrl     String          @db.Text
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  
+  state       ClipMagicState  @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+  
+  @@unique([workspaceId, trackId])
+  @@index([workspaceId])
 }
