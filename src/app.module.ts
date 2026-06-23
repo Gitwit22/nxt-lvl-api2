@@ -16,6 +16,7 @@ import { OrganizationsModule } from './modules/organizations/organizations.modul
 import { ProgramsModule } from './modules/programs/programs.module';
 import { CinemaStudioModule } from './modules/cinema-studio/cinema-studio.module';
 import { StudioCoreModule } from './modules/studio-core/studio-core.module';
+import { ClipMagicModule } from './modules/clip-magic/clip-magic.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -32,6 +33,7 @@ import { PrismaModule } from './prisma/prisma.module';
     ProgramsModule,
     CinemaStudioModule,
     StudioCoreModule,
+    ClipMagicModule,
     BusinessesModule,
     ContactsModule,
     CategoriesModule,
