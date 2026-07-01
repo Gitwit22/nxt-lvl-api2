@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /** Only these fields may be applied from a business owner's change request. */
@@ -21,7 +22,10 @@ function withUrlProtocol(value: unknown): unknown {
 
 @Injectable()
 export class ChangeRequestsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   listPending() {
     return this.prisma.businessChangeRequest.findMany({
@@ -32,12 +36,15 @@ export class ChangeRequestsService {
   }
 
   async approve(requestId: string, adminId: string) {
-    const request = await this.prisma.businessChangeRequest.findUnique({ where: { id: requestId } });
+    const request = await this.prisma.businessChangeRequest.findUnique({
+      where: { id: requestId },
+      include: { business: true },
+    });
     if (!request) {
       throw new NotFoundException('Change request not found.');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       await tx.businessChangeRequest.update({
         where: { id: requestId },
         data: {
@@ -74,15 +81,31 @@ export class ChangeRequestsService {
 
       return tx.businessChangeRequest.findUnique({ where: { id: requestId } });
     });
+
+    const notifyEmail = request.requestedByEmail ?? request.business.email ?? undefined;
+    if (notifyEmail) {
+      await this.notifications
+        .sendUpdateRequestReviewed({
+          to: notifyEmail,
+          businessName: request.business.name,
+          status: 'approved',
+        })
+        .catch(() => undefined);
+    }
+
+    return updated;
   }
 
   async reject(requestId: string, adminId: string) {
-    const request = await this.prisma.businessChangeRequest.findUnique({ where: { id: requestId } });
+    const request = await this.prisma.businessChangeRequest.findUnique({
+      where: { id: requestId },
+      include: { business: true },
+    });
     if (!request) {
       throw new NotFoundException('Change request not found.');
     }
 
-    return this.prisma.businessChangeRequest.update({
+    const updated = await this.prisma.businessChangeRequest.update({
       where: { id: requestId },
       data: {
         status: 'rejected',
@@ -90,5 +113,18 @@ export class ChangeRequestsService {
         reviewedByAdminId: adminId,
       },
     });
+
+    const notifyEmail = request.requestedByEmail ?? request.business.email ?? undefined;
+    if (notifyEmail) {
+      await this.notifications
+        .sendUpdateRequestReviewed({
+          to: notifyEmail,
+          businessName: request.business.name,
+          status: 'rejected',
+        })
+        .catch(() => undefined);
+    }
+
+    return updated;
   }
 }

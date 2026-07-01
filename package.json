@@ -28,6 +28,7 @@
     "@nestjs/core": "^11.1.26",
     "@nestjs/platform-express": "^11.1.26",
     "@nestjs/swagger": "^11.4.4",
+    "@nestjs/throttler": "^6.5.0",
     "@nxtlvl/auth-core": "file:vendor/auth-core",
     "@nxtlvl/notification-core": "file:vendor/notification-core",
     "@prisma/client": "^6.16.3",

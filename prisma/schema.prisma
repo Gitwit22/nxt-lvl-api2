@@ -45,6 +45,10 @@ enum ChangeRequestStatus {
   rejected
 }
 
+enum EditTokenPurpose {
+  BUSINESS_UPDATE
+}
+
 enum AdminRole {
   super_admin
   org_admin
@@ -226,6 +230,12 @@ model BusinessEditToken {
   id           String    @id @default(cuid())
   businessId   String
   tokenHash    String
+  purpose      EditTokenPurpose @default(BUSINESS_UPDATE)
+  requestedForEmail String?
+  requestedByEmail  String?
+  source       String?
+  ipAddress    String?
+  userAgent    String?
   expiresAt    DateTime
   usedAt       DateTime?
   createdAt    DateTime  @default(now())

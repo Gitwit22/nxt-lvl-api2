@@ -2,9 +2,17 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateBusinessDto } from './dto/create-business.dto';
+import { RequestEditLinkDto } from './dto/request-edit-link.dto';
 import { SuggestUpdateDto } from './dto/suggest-update.dto';
 import { randomBytes, createHash } from 'crypto';
 import { NotificationsService } from '../notifications/notifications.service';
+
+const EDIT_LINK_RESPONSE_MESSAGE =
+  'If this email matches our records, an update link has been sent.';
+
+function normalizeEmail(value: string | null | undefined): string {
+  return (value ?? '').trim().toLowerCase();
+}
 
 @Injectable()
 export class BusinessesService {
@@ -84,36 +92,75 @@ export class BusinessesService {
     });
   }
 
-  async requestEditLink(businessSlug: string) {
-    const business = await this.prisma.business.findFirst({ where: { slug: businessSlug } });
+  async requestEditLink(
+    businessRef: string,
+    dto: RequestEditLinkDto,
+    meta?: { ipAddress?: string | undefined; userAgent?: string | string[] | undefined },
+  ) {
+    const business =
+      (await this.prisma.business.findUnique({ where: { id: businessRef } })) ??
+      (await this.prisma.business.findFirst({ where: { slug: businessRef } }));
+
     if (!business) {
-      throw new NotFoundException('Business not found.');
+      return { message: EDIT_LINK_RESPONSE_MESSAGE };
+    }
+
+    return this.requestEditLinkForBusiness(business, dto, meta);
+  }
+
+  private async requestEditLinkForBusiness(
+    business: { id: string; name: string; email: string | null },
+    dto: RequestEditLinkDto,
+    meta?: { ipAddress?: string | undefined; userAgent?: string | string[] | undefined },
+  ) {
+    const businessEmail = normalizeEmail(business.email);
+    const requestedEmail = normalizeEmail(dto.email);
+
+    if (!businessEmail || !requestedEmail || requestedEmail !== businessEmail) {
+      return { message: EDIT_LINK_RESPONSE_MESSAGE };
     }
 
     const token = randomBytes(32).toString('hex');
     const tokenHash = createHash('sha256').update(token).digest('hex');
     const expiresAt = new Date(Date.now() + 1000 * 60 * 30);
+    const now = new Date();
 
-    await this.prisma.businessEditToken.create({
-      data: {
-        businessId: business.id,
-        tokenHash,
-        expiresAt,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.businessEditToken.updateMany({
+        where: {
+          businessId: business.id,
+          usedAt: null,
+          expiresAt: { gt: now },
+          purpose: 'BUSINESS_UPDATE',
+          source: 'owner_request',
+        },
+        data: { usedAt: now },
+      });
+
+      await tx.businessEditToken.create({
+        data: {
+          businessId: business.id,
+          tokenHash,
+          purpose: 'BUSINESS_UPDATE',
+          requestedForEmail: businessEmail,
+          requestedByEmail: requestedEmail,
+          source: 'owner_request',
+          ipAddress: meta?.ipAddress,
+          userAgent: Array.isArray(meta?.userAgent) ? meta?.userAgent.join(', ') : meta?.userAgent,
+          expiresAt,
+        },
+      });
     });
 
-    if (business.email) {
-      await this.notifications.sendEditLink({
-        to: business.email,
+    await this.notifications
+      .sendEditLink({
+        to: business.email!,
         businessName: business.name,
         token,
         expiresAt,
-      }).catch(() => undefined);
-    }
+      })
+      .catch(() => undefined);
 
-    return {
-      token,
-      expiresAt,
-    };
+    return { message: EDIT_LINK_RESPONSE_MESSAGE };
   }
 }

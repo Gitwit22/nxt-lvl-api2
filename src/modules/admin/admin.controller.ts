@@ -89,7 +89,14 @@ export class AdminController {
     const tokenHash = createHash('sha256').update(token).digest('hex');
     const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7); // 7 days
     await this.prisma.businessEditToken.create({
-      data: { businessId, tokenHash, expiresAt },
+      data: {
+        businessId,
+        tokenHash,
+        purpose: 'BUSINESS_UPDATE',
+        requestedForEmail: business.email ?? undefined,
+        source: 'admin_generated',
+        expiresAt,
+      },
     });
     if (business.email) {
       await this.notifications.sendEditLink({
