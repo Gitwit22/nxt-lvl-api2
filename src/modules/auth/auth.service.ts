@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { LoginUseCase, defaultAuthConfig } from '@nxtlvl/auth-core';
 import type { LoginCredentials } from '@nxtlvl/auth-core';
 import { PrismaService } from '../../prisma/prisma.service';
+import programPartition from '../../config/program.partition.json';
 import { PrismaAuthRepository } from './infrastructure/prisma-auth-repository';
 import { BcryptPasswordHasher } from './infrastructure/bcrypt-password-hasher';
 import { JwtTokenService } from './infrastructure/jwt-token-service';
@@ -26,7 +27,7 @@ export class AuthService {
       auditLogger: this.auditLogger,
       config: {
         ...defaultAuthConfig,
-        issuer: 'fbappinc',
+        issuer: programPartition.authIssuer,
         allowLogin: true,
         requireVerifiedEmailForLogin: false,
         sessionTtlSeconds: 86400,

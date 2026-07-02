@@ -5,6 +5,7 @@ import {
   ConsoleEmailLogger,
   loadNotificationConfig,
 } from '@nxtlvl/notification-core';
+import programPartition from '../../config/program.partition.json';
 
 @Injectable()
 export class NotificationsService {
@@ -31,7 +32,7 @@ export class NotificationsService {
     expiresAt: Date;
   }): Promise<void> {
     if (!this.useCase) return;
-    const appUrl = process.env['APP_URL'] ?? 'https://fbapp.pages.dev';
+    const appUrl = process.env['APP_URL'] ?? programPartition.appUrl;
     const editUrl = `${appUrl}/edit?token=${options.token}`;
     await this.useCase.execute({
       to: options.to,
@@ -41,7 +42,7 @@ export class NotificationsService {
         <p>Here is your one-time edit link for <strong>${options.businessName}</strong>:</p>
         <p><a href="${editUrl}" style="color:#C45A8A">${editUrl}</a></p>
         <p>This link expires on ${options.expiresAt.toUTCString()}. Do not share it.</p>
-        <p>— FBAppInc Directory</p>
+        <p>— ${programPartition.appName}</p>
       `,
       text: `Edit your listing: ${editUrl}\n\nExpires: ${options.expiresAt.toUTCString()}`,
     });
@@ -59,7 +60,7 @@ export class NotificationsService {
         <p>Hi there,</p>
         <p>We received your update request for <strong>${options.businessName}</strong>.</p>
         <p>Your changes are now pending admin review. We will email you once a decision is made.</p>
-        <p>— FBAppInc Directory</p>
+        <p>— ${programPartition.appName}</p>
       `,
       text:
         `We received your update request for ${options.businessName}.\n` +
@@ -84,13 +85,13 @@ export class NotificationsService {
           <p>Hi there,</p>
           <p>Your update request for <strong>${options.businessName}</strong> was approved and is now live.</p>
           <p>Thank you for keeping your listing current.</p>
-          <p>— FBAppInc Directory</p>
+          <p>— ${programPartition.appName}</p>
         `
         : `
           <p>Hi there,</p>
           <p>Your update request for <strong>${options.businessName}</strong> was reviewed but not approved.</p>
           <p>You can request another edit link and submit updated changes at any time.</p>
-          <p>— FBAppInc Directory</p>
+          <p>— ${programPartition.appName}</p>
         `,
       text: approved
         ? `Your update request for ${options.businessName} was approved and is now live.`

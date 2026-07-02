@@ -1,17 +1,18 @@
 import { PrismaClient } from '@prisma/client';
 import { hash } from 'bcrypt';
+import programPartition from '../src/config/program.partition.json';
 
 const prisma = new PrismaClient();
 
 async function main() {
   const organization = await prisma.organization.upsert({
-    where: { slug: 'nxt-lvl' },
+    where: { slug: programPartition.organizationSlug },
     update: {
-      name: 'NXT LVL Technology Solutions',
+      name: programPartition.organizationName,
     },
     create: {
-      name: 'NXT LVL Technology Solutions',
-      slug: 'nxt-lvl',
+      name: programPartition.organizationName,
+      slug: programPartition.organizationSlug,
       status: 'active',
     },
   });
@@ -20,18 +21,18 @@ async function main() {
     where: {
       organizationId_slug: {
         organizationId: organization.id,
-        slug: 'fba-app',
+        slug: programPartition.primaryProgramSlug,
       },
     },
     update: {
-      name: 'FBA App',
+      name: programPartition.primaryProgramName,
       type: 'business_directory',
       status: 'active',
     },
     create: {
       organizationId: organization.id,
-      name: 'FBA App',
-      slug: 'fba-app',
+      name: programPartition.primaryProgramName,
+      slug: programPartition.primaryProgramSlug,
       type: 'business_directory',
       status: 'active',
       settings: {},

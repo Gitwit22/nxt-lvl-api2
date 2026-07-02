@@ -2,6 +2,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
+import programPartition from './config/program.partition.json';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
@@ -80,8 +81,8 @@ async function bootstrap() {
   app.useGlobalFilters(new GlobalExceptionFilter());
 
   const config = new DocumentBuilder()
-    .setTitle('NXT LVL API 2')
-    .setDescription('Program-based API for multi-program operations')
+    .setTitle(`${programPartition.appName} API 2`)
+    .setDescription(`Dedicated API 2 partition for ${programPartition.customerName}.`)
     .setVersion('1.0.0')
     .build();
 

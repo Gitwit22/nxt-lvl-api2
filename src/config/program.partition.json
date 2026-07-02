@@ -1,0 +1,11 @@
+{
+  "customerName": "NXT LVL Technology Solutions",
+  "organizationSlug": "nxt-lvl",
+  "organizationName": "NXT LVL Technology Solutions",
+  "primaryProgramSlug": "fba-app",
+  "primaryProgramName": "FBA App",
+  "authIssuer": "fbappinc-api2",
+  "appName": "FBAppInc Directory",
+  "appUrl": "https://fbapp.pages.dev",
+  "storageNamespace": "fbappinc-api2"
+}
