@@ -122,6 +122,7 @@ model Business {
   ownershipConfirmedAt        DateTime?
   logoUrl                     String?
   coverImageUrl               String?
+  photoUrls                   String[]              @default([])
   yearEstablished             Int?
   serviceArea                 String?
   bookingLink                 String?

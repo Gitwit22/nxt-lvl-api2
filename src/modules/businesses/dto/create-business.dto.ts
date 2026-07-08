@@ -50,6 +50,10 @@ export class CreateBusinessDto {
   zip?: string;
 
   @IsOptional()
+  @IsArray()
+  photoUrls?: string[];
+
+  @IsOptional()
   @IsEnum(BusinessStatus)
   status?: BusinessStatus;
 

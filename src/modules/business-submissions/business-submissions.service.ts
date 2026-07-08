@@ -90,6 +90,10 @@ export class BusinessSubmissionsService {
     const num = (v: unknown) => (typeof v === 'number' ? v : undefined);
     const arr = (v: unknown): string[] =>
       Array.isArray(v) ? (v as unknown[]).filter((x): x is string => typeof x === 'string') : [];
+    const urlArr = (v: unknown): string[] =>
+      arr(v)
+        .map((item) => withUrlProtocol(item))
+        .filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
 
     const profileCompletionPercentage = calculateCompletionPercentage(payload);
 
@@ -118,6 +122,7 @@ export class BusinessSubmissionsService {
           ownershipConfirmedAt: payload.isBlackAmericanOwned === true ? new Date() : undefined,
           logoUrl: url(payload.logoUrl),
           coverImageUrl: url(payload.coverImageUrl),
+          photoUrls: urlArr(payload.photoUrls),
           yearEstablished: num(payload.yearEstablished),
           serviceArea: str(payload.serviceArea),
           bookingLink: url(payload.bookingLink),

@@ -47,7 +47,7 @@ export class AdminController {
     const allowed = [
       'name', 'description', 'categories', 'services', 'tags',
       'phone', 'email', 'website', 'address', 'city', 'state', 'zip',
-      'isBlackAmericanOwned', 'logoUrl', 'coverImageUrl', 'yearEstablished',
+      'isBlackAmericanOwned', 'logoUrl', 'coverImageUrl', 'photoUrls', 'yearEstablished',
       'serviceArea', 'bookingLink', 'facebook', 'instagram', 'linkedin',
       'tiktok', 'youtube', 'isOnlineOnly', 'isMobile', 'appointmentRequired',
       'deliveryAvailable', 'acceptingNewCustomers', 'businessHours',
@@ -66,6 +66,13 @@ export class AdminController {
     ]);
     for (const key of allowed) {
       if (key in body) {
+        if (key === 'photoUrls' && Array.isArray(body[key])) {
+          data[key] = (body[key] as unknown[])
+            .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+            .map((item) => String(withUrlProtocol(item)));
+          continue;
+        }
+
         data[key] = urlFields.has(key) ? withUrlProtocol(body[key]) : body[key];
       }
     }

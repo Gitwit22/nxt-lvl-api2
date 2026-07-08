@@ -6,7 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 const SAFE_PAYLOAD_FIELDS = [
   'name', 'description', 'categories', 'services', 'tags',
   'phone', 'email', 'website', 'address', 'city', 'state', 'zip',
-  'isBlackAmericanOwned', 'logoUrl', 'coverImageUrl', 'yearEstablished',
+  'isBlackAmericanOwned', 'logoUrl', 'coverImageUrl', 'photoUrls', 'yearEstablished',
   'serviceArea', 'bookingLink', 'facebook', 'instagram', 'linkedin',
   'tiktok', 'youtube', 'isOnlineOnly', 'isMobile', 'appointmentRequired',
   'deliveryAvailable', 'acceptingNewCustomers', 'businessHours',
@@ -72,6 +72,13 @@ export class ChangeRequestsService {
           ]);
           for (const field of SAFE_PAYLOAD_FIELDS) {
             if (field in raw) {
+              if (field === 'photoUrls' && Array.isArray(raw[field])) {
+                safe[field] = (raw[field] as unknown[])
+                  .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+                  .map((item) => String(withUrlProtocol(item)));
+                continue;
+              }
+
               safe[field] = urlFields.has(field) ? withUrlProtocol(raw[field]) : raw[field];
             }
           }
