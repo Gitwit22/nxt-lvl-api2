@@ -3,6 +3,7 @@ import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
 import { ProgramsService } from './programs.service';
 import { CreateProgramDto } from './dto/create-program.dto';
 import { BusinessesService } from '../businesses/businesses.service';
+import { UpsertLaunchpadStateDto } from './dto/upsert-launchpad-state.dto';
 
 @Controller('programs')
 export class ProgramsController {
@@ -14,6 +15,16 @@ export class ProgramsController {
   @Get()
   getPrograms() {
     return this.programsService.listPrograms();
+  }
+
+  @Get('launchpad/state')
+  getLaunchpadState() {
+    return this.programsService.getLaunchpadState();
+  }
+
+  @Post('launchpad/state')
+  upsertLaunchpadState(@Body() dto: UpsertLaunchpadStateDto) {
+    return this.programsService.upsertLaunchpadState(dto);
   }
 
   @UseGuards(AdminJwtGuard)
