@@ -35,6 +35,12 @@ export class ChangeRequestsService {
     });
   }
 
+  countPending(): Promise<number> {
+    return this.prisma.businessChangeRequest.count({
+      where: { status: 'pending_review' },
+    });
+  }
+
   async approve(requestId: string, adminId: string) {
     const request = await this.prisma.businessChangeRequest.findUnique({
       where: { id: requestId },

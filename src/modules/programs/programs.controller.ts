@@ -3,6 +3,8 @@ import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
 import { ProgramsService } from './programs.service';
 import { CreateProgramDto } from './dto/create-program.dto';
 import { BusinessesService } from '../businesses/businesses.service';
+import { BusinessSubmissionsService } from '../business-submissions/business-submissions.service';
+import { ChangeRequestsService } from '../change-requests/change-requests.service';
 import { UpsertLaunchpadStateDto } from './dto/upsert-launchpad-state.dto';
 
 @Controller('programs')
@@ -10,6 +12,8 @@ export class ProgramsController {
   constructor(
     private readonly programsService: ProgramsService,
     private readonly businessesService: BusinessesService,
+    private readonly submissionsService: BusinessSubmissionsService,
+    private readonly changeRequestsService: ChangeRequestsService,
   ) {}
 
   @Get()
@@ -46,5 +50,14 @@ export class ProgramsController {
   @Get(':programSlug/categories')
   getCategories(@Param('programSlug') programSlug: string) {
     return this.businessesService.listCategoriesByProgramSlug(programSlug);
+  }
+
+  @Get(':programSlug/pending-count')
+  async getPendingCount(@Param('programSlug') programSlug: string) {
+    const [submissions, changeRequests] = await Promise.all([
+      this.submissionsService.countPending(programSlug),
+      this.changeRequestsService.countPending(),
+    ]);
+    return { count: submissions + changeRequests };
   }
 }

@@ -70,6 +70,12 @@ export class BusinessSubmissionsService {
     });
   }
 
+  countPending(programSlug: string): Promise<number> {
+    return this.prisma.businessSubmission.count({
+      where: { status: 'pending_review', program: { slug: programSlug } },
+    });
+  }
+
   async approveSubmission(submissionId: string, adminId: string) {
     const submission = await this.prisma.businessSubmission.findUnique({
       where: { id: submissionId },
