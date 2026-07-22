@@ -68,7 +68,7 @@ export class FilesController {
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }))
   uploadFile(
     @UploadedFile() file: Express.Multer.File,
-    @Body('subdirectory') subdirectory?: string,
+    @Query('subdirectory') subdirectory?: string,
   ) {
     if (!file) throw new BadRequestException('No file provided.');
     return this.filesService.uploadFile({

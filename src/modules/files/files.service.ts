@@ -158,7 +158,10 @@ export class FilesService {
         Body: input.fileBuffer,
         ContentType: input.contentType,
       }),
-    );
+    ).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : 'R2 upload failed.';
+      throw new ServiceUnavailableException(`Storage upload failed: ${message}`);
+    });
 
     const publicUrl = this.getPublicUrl(objectKey);
     if (!publicUrl) {

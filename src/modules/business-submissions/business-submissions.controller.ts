@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Headers, Param, Patch, Post, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, Param, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Throttle } from '@nestjs/throttler';
@@ -27,7 +27,7 @@ export class BusinessSubmissionsController {
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }))
   uploadForSubmission(
     @UploadedFile() file: Express.Multer.File,
-    @Body('subdirectory') subdirectory?: string,
+    @Query('subdirectory') subdirectory?: string,
   ) {
     if (!file) throw new BadRequestException('No file provided.');
     return this.filesService.uploadFile({

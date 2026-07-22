@@ -46,8 +46,8 @@ export class EditTokensController {
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }))
   async uploadWithToken(
     @Query('token') token: string | undefined,
+    @Query('subdirectory') subdirectory: string | undefined,
     @UploadedFile() file: Express.Multer.File,
-    @Body('subdirectory') subdirectory?: string,
   ) {
     if (!token) throw new BadRequestException('Token is required.');
     if (!file) throw new BadRequestException('No file provided.');
