@@ -58,5 +58,21 @@ export class AuthService {
       },
     };
   }
+
+  async getMe(adminId: string) {
+    const admin = await this.prisma.adminUser.findUnique({
+      where: { id: adminId },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        organizationId: true,
+      },
+    });
+    if (!admin) throw new UnauthorizedException('Admin not found.');
+    return admin;
+  }
 }
 

@@ -1,6 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
-import { IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { BadRequestException, Body, Controller, Delete, Get, Headers, Param, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
 import { FilesService } from './files.service';
+import type { CreateFileAssetInput } from './files.service';
 
 class CreateFileUrlDto {
   @IsString()
@@ -29,9 +33,51 @@ class CreateFileUrlDto {
   subdirectory?: string;
 }
 
+class CreateFileAssetDto implements CreateFileAssetInput {
+  @IsOptional()
+  @IsString()
+  programId?: string;
+
+  @IsOptional()
+  @IsString()
+  businessId?: string;
+
+  @IsString()
+  fileName!: string;
+
+  @IsString()
+  contentType!: string;
+
+  @IsNumber()
+  sizeBytes!: number;
+
+  @IsString()
+  objectKey!: string;
+
+  @IsOptional()
+  @IsString()
+  publicUrl?: string;
+}
+
 @Controller('files')
+@UseGuards(AdminJwtGuard)
 export class FilesController {
   constructor(private readonly filesService: FilesService) {}
+
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }))
+  uploadFile(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('subdirectory') subdirectory?: string,
+  ) {
+    if (!file) throw new BadRequestException('No file provided.');
+    return this.filesService.uploadFile({
+      fileBuffer: file.buffer,
+      fileName: file.originalname,
+      contentType: file.mimetype,
+      subdirectory,
+    });
+  }
 
   @Post('signed-url')
   createSignedUrl(@Body() dto: CreateFileUrlDto) {
@@ -71,5 +117,28 @@ export class FilesController {
       action: 'delete',
       objectKey,
     });
+  }
+
+  // ─── File metadata CRUD ───────────────────────────────────────────────
+
+  @Post('metadata')
+  createMetadata(
+    @Headers('x-admin-id') adminId: string,
+    @Body() dto: CreateFileAssetDto,
+  ) {
+    return this.filesService.createFileAsset(adminId, dto);
+  }
+
+  @Get('metadata')
+  listMetadata(@Headers('x-admin-id') adminId: string) {
+    return this.filesService.listFileAssets(adminId);
+  }
+
+  @Delete('metadata/:id')
+  deleteMetadata(
+    @Param('id') id: string,
+    @Headers('x-admin-id') adminId: string,
+  ) {
+    return this.filesService.deleteFileAsset(id, adminId);
   }
 }
