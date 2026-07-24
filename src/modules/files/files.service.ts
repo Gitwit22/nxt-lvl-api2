@@ -129,6 +129,34 @@ export class FilesService {
     };
   }
 
+  async testUpload(): Promise<{ status: string; config: Record<string, string>; error?: string }> {
+    const config = {
+      r2AccountId: process.env['R2_ACCOUNT_ID']?.trim() ? 'set' : 'MISSING',
+      r2AccessKeyId: process.env['R2_ACCESS_KEY_ID']?.trim() ? 'set' : 'MISSING',
+      r2SecretAccessKey: process.env['R2_SECRET_ACCESS_KEY']?.trim() ? 'set' : 'MISSING',
+      r2BucketName: this.getBucketName(),
+      r2PublicUrl: process.env['R2_PUBLIC_URL']?.trim() || 'MISSING',
+    };
+
+    if (!this.s3Client) {
+      return { status: 'not_configured', config, error: 'S3 client not initialized — check R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY' };
+    }
+
+    const testKey = this.getStorageKey('_health', `test-${Date.now()}.txt`);
+    try {
+      await this.s3Client.send(new PutObjectCommand({
+        Bucket: this.getBucketName(),
+        Key: testKey,
+        Body: Buffer.from('health-check'),
+        ContentType: 'text/plain',
+      }));
+      await this.s3Client.send(new DeleteObjectCommand({ Bucket: this.getBucketName(), Key: testKey })).catch(() => {});
+      return { status: 'ok', config };
+    } catch (err) {
+      return { status: 'error', config, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
   private static readonly ALLOWED_IMAGE_TYPES = [
     'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
   ];

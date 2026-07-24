@@ -64,6 +64,11 @@ class CreateFileAssetDto implements CreateFileAssetInput {
 export class FilesController {
   constructor(private readonly filesService: FilesService) {}
 
+  @Get('r2-health')
+  checkR2() {
+    return this.filesService.testUpload();
+  }
+
   @Post('upload')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }))
   uploadFile(
