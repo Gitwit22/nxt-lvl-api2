@@ -129,11 +129,14 @@ export class FilesService {
     };
   }
 
-  async testUpload(): Promise<{ status: string; config: Record<string, string>; error?: string }> {
+  async testUpload(): Promise<{ status: string; config: Record<string, string>; error?: string; errorDetail?: Record<string, unknown> }> {
+    const accessKeyId = process.env['R2_ACCESS_KEY_ID']?.trim();
     const config = {
       r2AccountId: process.env['R2_ACCOUNT_ID']?.trim() ? 'set' : 'MISSING',
-      r2AccessKeyId: process.env['R2_ACCESS_KEY_ID']?.trim() ? 'set' : 'MISSING',
-      r2SecretAccessKey: process.env['R2_SECRET_ACCESS_KEY']?.trim() ? 'set' : 'MISSING',
+      r2AccessKeyIdPrefix: accessKeyId ? `${accessKeyId.slice(0, 6)}...(len:${accessKeyId.length})` : 'MISSING',
+      r2SecretAccessKeyLen: process.env['R2_SECRET_ACCESS_KEY']?.trim()
+        ? String(process.env['R2_SECRET_ACCESS_KEY']!.trim().length)
+        : 'MISSING',
       r2BucketName: this.getBucketName(),
       r2PublicUrl: process.env['R2_PUBLIC_URL']?.trim() || 'MISSING',
     };
@@ -153,7 +156,19 @@ export class FilesService {
       await this.s3Client.send(new DeleteObjectCommand({ Bucket: this.getBucketName(), Key: testKey })).catch(() => {});
       return { status: 'ok', config };
     } catch (err) {
-      return { status: 'error', config, error: err instanceof Error ? err.message : String(err) };
+      const anyErr = err as { name?: string; Code?: string; message?: string; $metadata?: { httpStatusCode?: number; requestId?: string }; $fault?: string };
+      return {
+        status: 'error',
+        config,
+        error: err instanceof Error ? err.message : String(err),
+        errorDetail: {
+          name: anyErr?.name,
+          code: anyErr?.Code,
+          httpStatusCode: anyErr?.$metadata?.httpStatusCode,
+          requestId: anyErr?.$metadata?.requestId,
+          fault: anyErr?.$fault,
+        },
+      };
     }
   }
 
