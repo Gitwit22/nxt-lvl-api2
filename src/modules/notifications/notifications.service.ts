@@ -32,7 +32,11 @@ export class NotificationsService {
     expiresAt: Date;
   }): Promise<void> {
     if (!this.useCase) return;
-    const appUrl = process.env['APP_URL'] ?? programPartition.appUrl;
+    let appUrl = (process.env['APP_URL'] ?? programPartition.appUrl).trim();
+    // Handle comma-separated URLs (take first one)
+    if (appUrl.includes(',')) {
+      appUrl = appUrl.split(',')[0].trim();
+    }
     const editUrl = `${appUrl}/edit?token=${options.token}`;
     await this.useCase.execute({
       to: options.to,
