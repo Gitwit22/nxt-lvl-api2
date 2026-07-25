@@ -3,9 +3,9 @@
   "organizationSlug": "nxt-lvl",
   "organizationName": "NXT LVL Technology Solutions",
   "primaryProgramSlug": "fba-app",
-  "primaryProgramName": "FBA App",
+  "primaryProgramName": "BlackNBiz",
   "authIssuer": "fbappinc-api2",
-  "appName": "FBAppInc Directory",
-  "appUrl": "https://fbapp.pages.dev",
+  "appName": "BlackNBiz Directory",
+  "appUrl": "https://blacknbiz.com",
   "storageNamespace": "fbappinc-api2"
 }
