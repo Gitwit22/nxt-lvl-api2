@@ -1,11 +1,14 @@
 {
-  "customerName": "NXT LVL Technology Solutions",
-  "organizationSlug": "nxt-lvl",
-  "organizationName": "NXT LVL Technology Solutions",
-  "primaryProgramSlug": "fba-app",
-  "primaryProgramName": "BlackNBiz",
-  "authIssuer": "fbappinc-api2",
-  "appName": "BlackNBiz Directory",
-  "appUrl": "https://blacknbiz.com",
-  "storageNamespace": "fbappinc-api2"
+  "customerName": "EA Management LLC",
+  "organizationSlug": "ea-management",
+  "organizationName": "EA Management LLC",
+  "primaryProgramSlug": "client-intake",
+  "primaryProgramName": "Client Intake & Workflow",
+  "authIssuer": "ea-management-api",
+  "appName": "ClientFlow Hub",
+  "appUrl": "https://clientflow.ea-management.app",
+  "storageNamespace": "ea-management-api",
+  "timezone": "America/Detroit",
+  "currency": "USD",
+  "environment": "demo"
 }

@@ -49,8 +49,12 @@ enum EditTokenPurpose {
   BUSINESS_UPDATE
 }
 
-enum AdminRole {
-  super_admin
+enum PlatformRole {
+  platform_super_admin
+}
+
+enum OrganizationRole {
+  org_owner
   org_admin
   reviewer
 }
@@ -76,7 +80,7 @@ model Organization {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   programs    Program[]
-  adminUsers  AdminUser[]
+  members     OrganizationMember[]
   auditLogs   AuditLog[]
 }
 
@@ -294,24 +298,68 @@ model FileAsset {
 
 model AdminUser {
   id                       String                 @id @default(cuid())
-  organizationId           String
   email                    String                 @unique
   passwordHash             String
   firstName                String?
   lastName                 String?
-  role                     AdminRole              @default(reviewer)
+  platformRole             PlatformRole?
   isActive                 Boolean                @default(true)
   lastLoginAt              DateTime?
+  passwordChangedAt        DateTime?
   createdAt                DateTime               @default(now())
   updatedAt                DateTime               @updatedAt
 
-  organization             Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationMembers      OrganizationMember[]
+  sessions                 Session[]
   reviewedSubmissions      BusinessSubmission[]   @relation("SubmissionReviewedBy")
   reviewedChangeRequests   BusinessChangeRequest[] @relation("ChangeRequestReviewedBy")
   uploadedFiles            FileAsset[]
   auditLogs                AuditLog[]
 
-  @@index([organizationId, role])
+  @@index([platformRole])
+}
+
+model OrganizationMember {
+  id                 String             @id @default(cuid())
+  adminUserId        String
+  organizationId     String
+  organizationRole   OrganizationRole   @default(reviewer)
+  isActive           Boolean            @default(true)
+  invitedAt          DateTime           @default(now())
+  joinedAt           DateTime?
+  invitedByMemberId  String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  adminUser          AdminUser          @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedByMember    OrganizationMember? @relation("InvitedByMember", fields: [invitedByMemberId], references: [id], onDelete: SetNull)
+  invitedMembers     OrganizationMember[] @relation("InvitedByMember")
+
+  @@unique([adminUserId, organizationId])
+  @@index([organizationId, organizationRole])
+  @@index([isActive])
+}
+
+model Session {
+  id               String    @id @default(cuid())
+  adminUserId      String
+  jti              String    @unique
+  accessToken      String
+  accessExpiresAt  DateTime
+  refreshToken     String?
+  refreshExpiresAt DateTime?
+  revokedAt        DateTime?
+  ipAddress        String?
+  userAgent        String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  adminUser        AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@index([adminUserId])
+  @@index([accessExpiresAt])
+  @@index([revokedAt])
 }
 
 model CinemaStudioState {
