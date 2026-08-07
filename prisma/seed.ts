@@ -106,46 +106,38 @@ async function main() {
     },
   });
 
-  // Secondary: Client Intake program (ClientFlow Hub)
-  await prisma.program.upsert({
+  // Secondary: FBA App (BlackNBiz business directory)
+  const fbaProgram = await prisma.program.upsert({
     where: {
       organizationId_slug: {
         organizationId: organization.id,
-        slug: 'client-intake',
+        slug: 'fba-app',
       },
     },
     update: {
-      name: 'Client Intake & Workflow',
+      name: 'BlackNBiz Business Directory',
       type: 'business_directory',
       status: 'active',
     },
     create: {
       organizationId: organization.id,
-      name: 'Client Intake & Workflow',
-      slug: 'client-intake',
+      name: 'BlackNBiz Business Directory',
+      slug: 'fba-app',
       type: 'business_directory',
       status: 'active',
       settings: {},
     },
   });
+  console.log(`✅ FBA App program: ${fbaProgram.id}`);
 
-  // Default categories for main program (fba-app)
+  // Default categories for main program (client-intake)
   const defaultCategories = [
-    'Restaurants & Food',
-    'Beauty & Personal Care',
-    'Retail & Boutiques',
-    'Health & Wellness',
-    'Finance & Insurance',
     'Technology',
-    'Home Services',
-    'Consulting & Professional Services',
-    'Education & Tutoring',
-    'Legal Services',
+    'Healthcare',
+    'Education',
+    'Consulting',
+    'Legal',
     'Nonprofit',
-    'Events & Entertainment',
-    'Automotive',
-    'Real Estate',
-    'Media & Marketing',
   ];
 
   for (let index = 0; index < defaultCategories.length; index += 1) {
@@ -196,6 +188,47 @@ async function main() {
         programId: cinemaStudioProgram.id,
         name: category,
         slug: category.toLowerCase().replace(/\s+/g, '-'),
+        sortOrder: index,
+      },
+    });
+  }
+
+  // Categories for fba-app (BlackNBiz business directory)
+  const fbaCategories = [
+    'Restaurants & Food',
+    'Beauty & Personal Care',
+    'Retail & Boutiques',
+    'Health & Wellness',
+    'Finance & Insurance',
+    'Technology',
+    'Home Services',
+    'Consulting & Professional Services',
+    'Education & Tutoring',
+    'Legal Services',
+    'Nonprofit',
+    'Events & Entertainment',
+    'Automotive',
+    'Real Estate',
+    'Media & Marketing',
+  ];
+
+  for (let index = 0; index < fbaCategories.length; index += 1) {
+    const category = fbaCategories[index];
+    await prisma.businessCategory.upsert({
+      where: {
+        programId_slug: {
+          programId: fbaProgram.id,
+          slug: category.toLowerCase().replace(/\s+/g, '-').replace(/&/g, 'and').replace(/[^a-z0-9-]/g, ''),
+        },
+      },
+      update: {
+        isActive: true,
+        sortOrder: index,
+      },
+      create: {
+        programId: fbaProgram.id,
+        name: category,
+        slug: category.toLowerCase().replace(/\s+/g, '-').replace(/&/g, 'and').replace(/[^a-z0-9-]/g, ''),
         sortOrder: index,
       },
     });
