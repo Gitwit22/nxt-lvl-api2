@@ -1,38 +1,101 @@
-import { Controller, Get, Param, UseGuards, Headers } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request } from 'express';
 import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
+import { OrganizationAccessGuard } from '../../common/guards/organization-access.guard';
+import type { AccessClaims } from '../auth/services/enhanced-jwt-token.service';
+import type { OrganizationMember } from '@prisma/client';
 import { OrganizationsService } from './organizations.service';
+import { OrganizationMembershipService } from './services/organization-membership.service';
+import { InviteMemberDto, UpdateMemberRoleDto } from './dto/membership.dto';
+
+type AuthRequest = Request & { adminUser?: AccessClaims; membership?: OrganizationMember | null };
 
 @Controller('organizations')
-@UseGuards(AdminJwtGuard)
+@UseGuards(AdminJwtGuard, OrganizationAccessGuard)
 export class OrganizationsController {
-  constructor(private readonly organizationsService: OrganizationsService) {}
+  constructor(
+    private readonly organizationsService: OrganizationsService,
+    private readonly membershipService: OrganizationMembershipService,
+  ) {}
 
-  /**
-   * Get organization settings loaded after login
-   * Frontend should call this after successful auth to load org config
-   */
+  // ─── Organization ────────────────────────────────────────────────────────────
+
   @Get(':organizationId/settings')
-  async getSettings(@Param('organizationId') organizationId: string) {
+  getSettings(@Param('organizationId') organizationId: string) {
     return this.organizationsService.getOrganizationSettings(organizationId);
   }
 
-  /**
-   * List all admin users in the organization
-   * Only accessible by org admins and above
-   */
-  @Get(':organizationId/admins')
-  async listAdmins(@Param('organizationId') organizationId: string) {
-    return this.organizationsService.listAdminUsers(organizationId);
+  // ─── Members ─────────────────────────────────────────────────────────────────
+
+  @Get(':organizationId/members')
+  listMembers(@Param('organizationId') organizationId: string) {
+    return this.membershipService.listMembers(organizationId);
   }
 
-  /**
-   * Get specific admin user details
-   */
-  @Get(':organizationId/admins/:adminId')
-  async getAdmin(
+  @Get(':organizationId/members/:memberId')
+  getMember(
     @Param('organizationId') organizationId: string,
-    @Param('adminId') adminId: string,
+    @Param('memberId') memberId: string,
   ) {
-    return this.organizationsService.getAdminUser(organizationId, adminId);
+    return this.membershipService.getMember(organizationId, memberId);
+  }
+
+  @Post(':organizationId/invitations')
+  @HttpCode(HttpStatus.CREATED)
+  inviteMember(
+    @Param('organizationId') organizationId: string,
+    @Req() req: AuthRequest,
+    @Body() dto: InviteMemberDto,
+  ) {
+    // req.membership is set by OrganizationAccessGuard (null for platform admin)
+    return this.membershipService.inviteMember(organizationId, req.membership?.id ?? null, dto);
+  }
+
+  @Patch(':organizationId/members/:memberId/role')
+  updateMemberRole(
+    @Param('organizationId') organizationId: string,
+    @Param('memberId') memberId: string,
+    @Req() req: AuthRequest,
+    @Body() dto: UpdateMemberRoleDto,
+  ) {
+    return this.membershipService.updateMemberRole(
+      organizationId,
+      req.membership?.id ?? null,
+      memberId,
+      dto,
+      req.adminUser!,
+    );
+  }
+
+  @Post(':organizationId/members/:memberId/disable')
+  @HttpCode(HttpStatus.OK)
+  disableMember(
+    @Param('organizationId') organizationId: string,
+    @Param('memberId') memberId: string,
+    @Req() req: AuthRequest,
+  ) {
+    return this.membershipService.disableMember(organizationId, req.membership?.id ?? null, memberId);
+  }
+
+  @Post(':organizationId/members/:memberId/enable')
+  @HttpCode(HttpStatus.OK)
+  enableMember(
+    @Param('organizationId') organizationId: string,
+    @Param('memberId') memberId: string,
+    @Req() req: AuthRequest,
+  ) {
+    return this.membershipService.enableMember(organizationId, req.membership?.id ?? null, memberId);
   }
 }
+

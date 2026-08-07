@@ -1,149 +1,160 @@
-import { Injectable } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PrismaService } from '../prisma/prisma.service';
+import { sign, verify as jwtVerify } from 'jsonwebtoken';
+import { hash as bcryptHash, compare as bcryptCompare } from 'bcrypt';
+import { PrismaService } from '../../../prisma/prisma.service';
 import {
   JwtPayload,
   TokenResponse,
   TokenType,
   TokenConfig,
   DEFAULT_TOKEN_CONFIG,
-} from '../types/jwt';
-import { randomBytes } from 'crypto';
+} from '../../../common/types/jwt';
+import { randomBytes, randomUUID } from 'crypto';
+
+export interface CreateSessionInput {
+  adminId: string;
+  email: string;
+  platformRole?: string;
+  organizationId?: string;
+  organizationRole?: string;
+}
+
+export interface AccessClaims {
+  adminId: string;
+  email: string;
+  platformRole?: string;
+  organizationId?: string;
+  organizationRole?: string;
+  jti: string;
+  sessionId: string;
+}
 
 /**
  * Enhanced JWT Token Service
- * 
- * Features:
- * - Access token (short-lived: 15-60 minutes)
- * - Refresh token (longer-lived: 7 days)
- * - Session tracking and revocation
- * - Proper JWT validation with all required claims
- * - Token rotation on refresh
- * - Session invalidation on logout/password change
+ *
+ * - Access token (short-lived: 30 minutes)
+ * - Refresh token (7 days), stored as bcrypt hash — never plaintext
+ * - Token rotation with reuse detection via tokenFamily
+ * - Session revocation on logout / password-change / account-disable
  */
 @Injectable()
 export class EnhancedJwtTokenService {
-  private tokenConfig: TokenConfig;
+  private readonly config: TokenConfig;
+  private get jwtSecret(): string {
+    const s = this.configService.get<string>('JWT_SECRET');
+    if (!s) throw new Error('JWT_SECRET env var is not set');
+    return s;
+  }
 
   constructor(
-    private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
   ) {
-    this.tokenConfig = this.loadTokenConfig();
-  }
-
-  private loadTokenConfig(): TokenConfig {
-    return {
+    this.config = {
       issuer: this.configService.get('JWT_ISSUER', DEFAULT_TOKEN_CONFIG.issuer),
       audience: this.configService.get('JWT_AUDIENCE', DEFAULT_TOKEN_CONFIG.audience),
       accessTokenExpiresIn: parseInt(
-        this.configService.get('JWT_ACCESS_EXPIRES_IN', DEFAULT_TOKEN_CONFIG.accessTokenExpiresIn.toString()),
+        this.configService.get('JWT_ACCESS_EXPIRES_IN', String(DEFAULT_TOKEN_CONFIG.accessTokenExpiresIn)),
       ),
       refreshTokenExpiresIn: parseInt(
-        this.configService.get('JWT_REFRESH_EXPIRES_IN', DEFAULT_TOKEN_CONFIG.refreshTokenExpiresIn.toString()),
+        this.configService.get('JWT_REFRESH_EXPIRES_IN', String(DEFAULT_TOKEN_CONFIG.refreshTokenExpiresIn)),
       ),
       algorithm: 'HS256',
     };
   }
 
-  /**
-   * Generate a new JWT ID (session identifier)
-   */
-  private generateJti(): string {
-    return randomBytes(16).toString('hex');
+  // ─── Private helpers ───────────────────────────────────────────────────────
+
+  private sign(payload: JwtPayload): string {
+    return sign(payload as object, this.jwtSecret, {
+      algorithm: 'HS256',
+      // exp is already embedded in payload; jsonwebtoken will not override it
+      // if we pass `expiresIn` here, but we carry it explicitly to keep full control.
+    });
   }
 
-  /**
-   * Create an access token
-   */
-  createAccessToken(payload: Partial<JwtPayload>): string {
-    const jti = this.generateJti();
-    const now = Math.floor(Date.now() / 1000);
+  private verify(token: string): JwtPayload {
+    return jwtVerify(token, this.jwtSecret, {
+      algorithms: ['HS256'],
+    }) as unknown as JwtPayload;
+  }
 
-    const tokenPayload: JwtPayload = {
+  private buildAccessPayload(input: CreateSessionInput, jti: string): JwtPayload {
+    const now = Math.floor(Date.now() / 1000);
+    return {
       alg: 'HS256',
-      iss: this.tokenConfig.issuer,
-      aud: this.tokenConfig.audience,
-      sub: payload.adminId!,
-      exp: now + this.tokenConfig.accessTokenExpiresIn,
+      iss: this.config.issuer,
+      aud: this.config.audience,
+      sub: input.adminId,
+      exp: now + this.config.accessTokenExpiresIn,
       iat: now,
       jti,
       type: TokenType.ACCESS,
-      adminId: payload.adminId!,
-      email: payload.email!,
-      platformRole: payload.platformRole,
-      organizationId: payload.organizationId,
-      organizationRole: payload.organizationRole,
+      adminId: input.adminId,
+      email: input.email,
+      platformRole: input.platformRole,
+      organizationId: input.organizationId,
+      organizationRole: input.organizationRole,
     };
-
-    return this.jwtService.sign(tokenPayload);
   }
 
-  /**
-   * Create a refresh token
-   */
-  private createRefreshToken(payload: Partial<JwtPayload>, jti: string): string {
+  private buildRefreshPayload(input: CreateSessionInput, jti: string): JwtPayload {
     const now = Math.floor(Date.now() / 1000);
-
-    const tokenPayload: JwtPayload = {
+    return {
       alg: 'HS256',
-      iss: this.tokenConfig.issuer,
-      aud: this.tokenConfig.audience,
-      sub: payload.adminId!,
-      exp: now + this.tokenConfig.refreshTokenExpiresIn,
+      iss: this.config.issuer,
+      aud: this.config.audience,
+      sub: input.adminId,
+      exp: now + this.config.refreshTokenExpiresIn,
       iat: now,
-      jti, // Same JTI as access token for correlation
+      jti,
       type: TokenType.REFRESH,
-      adminId: payload.adminId!,
-      email: payload.email!,
+      adminId: input.adminId,
+      email: input.email,
     };
-
-    return this.jwtService.sign(tokenPayload);
   }
 
+  private validateClaims(payload: JwtPayload): void {
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.alg !== 'HS256') throw new UnauthorizedException('Invalid algorithm');
+    if (payload.iss !== this.config.issuer) throw new UnauthorizedException('Invalid issuer');
+    if (payload.aud !== this.config.audience) throw new UnauthorizedException('Invalid audience');
+    if (!payload.sub) throw new UnauthorizedException('Missing subject');
+    if (!payload.exp || payload.exp < now) throw new UnauthorizedException('Token expired');
+    if (!payload.iat || payload.iat > now + 5) throw new UnauthorizedException('Invalid iat');
+    if (!payload.jti) throw new UnauthorizedException('Missing jti');
+    if (![TokenType.ACCESS, TokenType.REFRESH].includes(payload.type)) {
+      throw new UnauthorizedException('Invalid token type');
+    }
+  }
+
+  // ─── Public API ────────────────────────────────────────────────────────────
+
   /**
-   * Issue both access and refresh tokens with session tracking
+   * Create a new session: issue access + refresh tokens, persist session.
    */
-  async issueTokens(
-    payload: Partial<JwtPayload>,
+  async createSession(
+    input: CreateSessionInput,
     ipAddress?: string,
     userAgent?: string,
   ): Promise<{ tokens: TokenResponse; sessionId: string }> {
-    const jti = this.generateJti();
+    const jti = randomBytes(16).toString('hex');
+    const tokenFamily = randomUUID(); // identifies this rotation chain
 
-    // Create tokens
-    const accessTokenPayload: JwtPayload = {
-      alg: 'HS256',
-      iss: this.tokenConfig.issuer,
-      aud: this.tokenConfig.audience,
-      sub: payload.adminId!,
-      exp: Math.floor(Date.now() / 1000) + this.tokenConfig.accessTokenExpiresIn,
-      iat: Math.floor(Date.now() / 1000),
-      jti,
-      type: TokenType.ACCESS,
-      adminId: payload.adminId!,
-      email: payload.email!,
-      platformRole: payload.platformRole,
-      organizationId: payload.organizationId,
-      organizationRole: payload.organizationRole,
-    };
+    const accessToken = this.sign(this.buildAccessPayload(input, jti));
+    const refreshToken = this.sign(this.buildRefreshPayload(input, jti));
+    const refreshTokenHash = await bcryptHash(refreshToken, 10);
 
-    const accessToken = this.jwtService.sign(accessTokenPayload);
-    const refreshToken = this.createRefreshToken(payload, jti);
-
-    // Store session in database
+    const now = Date.now();
     const session = await this.prisma.session.create({
       data: {
-        adminUserId: payload.adminId!,
+        adminUserId: input.adminId,
         jti,
-        accessToken,
-        accessExpiresAt: new Date(accessTokenPayload.exp * 1000),
-        refreshToken,
-        refreshExpiresAt: new Date(
-          (Math.floor(Date.now() / 1000) + this.tokenConfig.refreshTokenExpiresIn) * 1000,
-        ),
+        tokenFamily,
+        refreshTokenHash,
+        accessExpiresAt: new Date(now + this.config.accessTokenExpiresIn * 1000),
+        refreshExpiresAt: new Date(now + this.config.refreshTokenExpiresIn * 1000),
         ipAddress,
         userAgent,
       },
@@ -153,7 +164,7 @@ export class EnhancedJwtTokenService {
       tokens: {
         accessToken,
         refreshToken,
-        expiresIn: this.tokenConfig.accessTokenExpiresIn,
+        expiresIn: this.config.accessTokenExpiresIn,
         tokenType: 'Bearer',
       },
       sessionId: session.id,
@@ -161,187 +172,143 @@ export class EnhancedJwtTokenService {
   }
 
   /**
-   * Validate and decode an access token with strict claim validation
+   * Verify an access token, check DB session is not revoked.
+   * Returns claims including the session DB id.
    */
-  validateAccessToken(token: string): JwtPayload {
+  async verifyAccessToken(token: string): Promise<AccessClaims> {
+    let payload: JwtPayload;
     try {
-      const decoded = this.jwtService.verify<JwtPayload>(token, {
-        algorithms: ['HS256'], // Only allow HS256
-      });
-
-      // Validate required claims
-      this.validateClaims(decoded);
-
-      if (decoded.type !== TokenType.ACCESS) {
-        throw new Error('Invalid token type');
-      }
-
-      return decoded;
-    } catch (error) {
-      throw new Error(`Token validation failed: ${error.message}`);
+      payload = this.verify(token);
+    } catch {
+      throw new UnauthorizedException('Invalid access token');
     }
+    this.validateClaims(payload);
+    if (payload.type !== TokenType.ACCESS) throw new UnauthorizedException('Wrong token type');
+
+    const session = await this.prisma.session.findUnique({ where: { jti: payload.jti } });
+    if (!session || session.revokedAt) throw new UnauthorizedException('Session revoked');
+    if (session.accessExpiresAt < new Date()) throw new UnauthorizedException('Session expired');
+
+    return {
+      adminId: payload.adminId,
+      email: payload.email,
+      platformRole: payload.platformRole,
+      organizationId: payload.organizationId,
+      organizationRole: payload.organizationRole,
+      jti: payload.jti,
+      sessionId: session.id,
+    };
   }
 
   /**
-   * Refresh an access token using a refresh token
+   * Rotate a refresh token.
+   * Detects reuse: if the token has already been rotated, revoke the entire family.
    */
-  async refreshAccessToken(
+  async rotateRefreshToken(
     refreshToken: string,
-    sessionId: string,
+    ipAddress?: string,
+    userAgent?: string,
   ): Promise<TokenResponse> {
+    let payload: JwtPayload;
     try {
-      // Verify refresh token signature and claims
-      const decoded = this.jwtService.verify<JwtPayload>(refreshToken, {
-        algorithms: ['HS256'],
+      payload = this.verify(refreshToken);
+    } catch {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+    this.validateClaims(payload);
+    if (payload.type !== TokenType.REFRESH) throw new UnauthorizedException('Wrong token type');
+
+    const session = await this.prisma.session.findUnique({ where: { jti: payload.jti } });
+
+    // Reuse detection: session not found means it was already rotated or deleted
+    if (!session) {
+      // Revoke any live session in this family (defensive — family may still have active rows)
+      await this.prisma.session.updateMany({
+        where: { tokenFamily: payload.jti, revokedAt: null },
+        data: { revokedAt: new Date() },
       });
+      throw new UnauthorizedException('Refresh token reuse detected — all sessions revoked');
+    }
 
-      this.validateClaims(decoded);
+    if (session.revokedAt) throw new UnauthorizedException('Session already revoked');
 
-      if (decoded.type !== TokenType.REFRESH) {
-        throw new Error('Invalid token type');
-      }
-
-      // Check session exists and is not revoked
-      const session = await this.prisma.session.findUnique({
-        where: { id: sessionId },
+    // Compare supplied token against stored hash
+    const hashMatch = await bcryptCompare(refreshToken, session.refreshTokenHash ?? '');
+    if (!hashMatch) {
+      // Token mismatch — potential theft; revoke entire family
+      await this.prisma.session.updateMany({
+        where: { tokenFamily: session.tokenFamily, revokedAt: null },
+        data: { revokedAt: new Date() },
       });
+      throw new UnauthorizedException('Refresh token invalid — all sessions revoked');
+    }
 
-      if (!session || session.revokedAt) {
-        throw new Error('Session not found or revoked');
-      }
+    // Fetch user to embed fresh claims
+    const user = await this.prisma.adminUser.findUnique({
+      where: { id: payload.adminId },
+      include: {
+        organizationMembers: {
+          where: { isActive: true },
+          take: 1,
+        },
+      },
+    });
+    if (!user || !user.isActive) throw new UnauthorizedException('Account disabled');
 
-      if (session.refreshToken !== refreshToken) {
-        throw new Error('Token mismatch');
-      }
+    const member = user.organizationMembers[0];
+    const input: CreateSessionInput = {
+      adminId: user.id,
+      email: user.email,
+      platformRole: user.platformRole ?? undefined,
+      organizationId: member?.organizationId,
+      organizationRole: member?.organizationRole,
+    };
 
-      // Generate new access token with same JTI
-      const adminUser = await this.prisma.adminUser.findUnique({
-        where: { id: decoded.adminId },
-      });
+    const newJti = randomBytes(16).toString('hex');
+    const newAccessToken = this.sign(this.buildAccessPayload(input, newJti));
+    const newRefreshToken = this.sign(this.buildRefreshPayload(input, newJti));
+    const newRefreshHash = await bcryptHash(newRefreshToken, 10);
+    const now = Date.now();
 
-      if (!adminUser || !adminUser.isActive) {
-        throw new Error('User not found or inactive');
-      }
-
-      const newAccessToken = this.createAccessToken({
-        adminId: adminUser.id,
-        email: adminUser.email,
-        platformRole: adminUser.platformRole?.toString(),
-      });
-
-      // Update session with new access token
-      await this.prisma.session.update({
-        where: { id: sessionId },
+    await this.prisma.$transaction(async (tx) => {
+      // Revoke the old session
+      await tx.session.update({ where: { id: session.id }, data: { revokedAt: new Date() } });
+      // Create the replacement
+      await tx.session.create({
         data: {
-          accessToken: newAccessToken,
-          accessExpiresAt: new Date(
-            Math.floor(Date.now() / 1000 + this.tokenConfig.accessTokenExpiresIn) * 1000,
-          ),
-          updatedAt: new Date(),
+          adminUserId: user.id,
+          jti: newJti,
+          tokenFamily: session.tokenFamily, // keep same family for reuse tracking
+          refreshTokenHash: newRefreshHash,
+          accessExpiresAt: new Date(now + this.config.accessTokenExpiresIn * 1000),
+          refreshExpiresAt: new Date(now + this.config.refreshTokenExpiresIn * 1000),
+          ipAddress,
+          userAgent,
         },
       });
+    });
 
-      return {
-        accessToken: newAccessToken,
-        refreshToken,
-        expiresIn: this.tokenConfig.accessTokenExpiresIn,
-        tokenType: 'Bearer',
-      };
-    } catch (error) {
-      throw new Error(`Token refresh failed: ${error.message}`);
-    }
+    return {
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+      expiresIn: this.config.accessTokenExpiresIn,
+      tokenType: 'Bearer',
+    };
   }
 
-  /**
-   * Revoke a session (logout)
-   */
+  /** Revoke one session (logout). */
   async revokeSession(sessionId: string): Promise<void> {
     await this.prisma.session.update({
       where: { id: sessionId },
-      data: {
-        revokedAt: new Date(),
-      },
+      data: { revokedAt: new Date() },
     });
   }
 
-  /**
-   * Revoke all sessions for a user (logout all devices)
-   */
+  /** Revoke every active session for a user (password change, account disable). */
   async revokeAllUserSessions(adminId: string): Promise<void> {
     await this.prisma.session.updateMany({
-      where: {
-        adminUserId: adminId,
-        revokedAt: null,
-      },
-      data: {
-        revokedAt: new Date(),
-      },
+      where: { adminUserId: adminId, revokedAt: null },
+      data: { revokedAt: new Date() },
     });
-  }
-
-  /**
-   * Verify token and check if session is still valid
-   */
-  async validateSession(token: string): Promise<{ valid: boolean; sessionId?: string }> {
-    try {
-      const decoded = this.validateAccessToken(token);
-
-      // Check if session is revoked
-      const session = await this.prisma.session.findUnique({
-        where: { jti: decoded.jti },
-      });
-
-      if (!session || session.revokedAt) {
-        return { valid: false };
-      }
-
-      // Check if token hasn't expired
-      if (decoded.exp < Math.floor(Date.now() / 1000)) {
-        return { valid: false };
-      }
-
-      return { valid: true, sessionId: session.id };
-    } catch {
-      return { valid: false };
-    }
-  }
-
-  /**
-   * Validate all required JWT claims
-   */
-  private validateClaims(payload: JwtPayload): void {
-    const now = Math.floor(Date.now() / 1000);
-
-    if (!payload.alg || payload.alg !== 'HS256') {
-      throw new Error('Invalid algorithm');
-    }
-
-    if (!payload.iss || payload.iss !== this.tokenConfig.issuer) {
-      throw new Error('Invalid issuer');
-    }
-
-    if (!payload.aud || payload.aud !== this.tokenConfig.audience) {
-      throw new Error('Invalid audience');
-    }
-
-    if (!payload.sub) {
-      throw new Error('Missing subject');
-    }
-
-    if (!payload.exp || payload.exp < now) {
-      throw new Error('Token expired');
-    }
-
-    if (!payload.iat || payload.iat > now) {
-      throw new Error('Invalid issued time');
-    }
-
-    if (!payload.jti) {
-      throw new Error('Missing JWT ID');
-    }
-
-    if (!payload.type || ![TokenType.ACCESS, TokenType.REFRESH].includes(payload.type)) {
-      throw new Error('Invalid token type');
-    }
   }
 }

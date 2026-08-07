@@ -123,24 +123,60 @@ async function main() {
     });
   }
 
+  // Platform admin (NXT LVL Tech) — no org membership, platform_super_admin
   const adminPassword = await hash('4755Dett', 10);
-
   await prisma.adminUser.upsert({
     where: { email: 'nxtlvltechllc@gmail.com' },
     update: {
       isActive: true,
-      role: 'super_admin',
+      platformRole: 'platform_super_admin',
       passwordHash: adminPassword,
     },
     create: {
-      organizationId: organization.id,
       email: 'nxtlvltechllc@gmail.com',
       passwordHash: adminPassword,
-      role: 'super_admin',
+      platformRole: 'platform_super_admin',
       firstName: 'Platform',
       lastName: 'Admin',
     },
   });
+
+  // EA Lake — org_owner of the seeded organization
+  const eaPassword = await hash('mbba2026', 10);
+  const eaLake = await prisma.adminUser.upsert({
+    where: { email: 'ea.lake@ea-management.app' },
+    update: { isActive: true, passwordHash: eaPassword },
+    create: {
+      email: 'ea.lake@ea-management.app',
+      passwordHash: eaPassword,
+      firstName: 'EA',
+      lastName: 'Lake',
+    },
+  });
+  await prisma.organizationMember.upsert({
+    where: { adminUserId_organizationId: { adminUserId: eaLake.id, organizationId: organization.id } },
+    update: { organizationRole: 'org_owner', isActive: true },
+    create: { adminUserId: eaLake.id, organizationId: organization.id, organizationRole: 'org_owner' },
+  });
+
+  // EA Staff — org_admin of the seeded organization
+  const eaStaff = await prisma.adminUser.upsert({
+    where: { email: 'staff@ea-management.app' },
+    update: { isActive: true, passwordHash: eaPassword },
+    create: {
+      email: 'staff@ea-management.app',
+      passwordHash: eaPassword,
+      firstName: 'EA',
+      lastName: 'Staff',
+    },
+  });
+  await prisma.organizationMember.upsert({
+    where: { adminUserId_organizationId: { adminUserId: eaStaff.id, organizationId: organization.id } },
+    update: { organizationRole: 'org_admin', isActive: true },
+    create: { adminUserId: eaStaff.id, organizationId: organization.id, organizationRole: 'org_admin' },
+  });
+
+  console.log('Seed complete.');
 }
 
 main()

@@ -1,442 +1,229 @@
-import { Injectable, UnauthorizedException, BadRequestException, ConflictException } from '@nestjs/common';
-import { LoginUseCase, defaultAuthConfig } from '@nxtlvl/auth-core';
-import type { LoginCredentials } from '@nxtlvl/auth-core';
+import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { compare as bcryptCompare, hash as bcryptHash } from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
-import programPartition from '../../config/program.partition.json';
-import { PrismaAuthRepository } from './infrastructure/prisma-auth-repository';
-import { BcryptPasswordHasher } from './infrastructure/bcrypt-password-hasher';
-import { JwtTokenService } from './infrastructure/jwt-token-service';
-import { ConsoleAuditLogger } from './infrastructure/console-audit-logger';
-import { LoginDto, InviteAdminDto } from './dto/auth.dto';
+import { EnhancedJwtTokenService, CreateSessionInput } from './services/enhanced-jwt-token.service';
+import { LoginDto, ChangePasswordDto } from './dto/auth.dto';
+import { PlatformRole } from '../../common/types/roles';
 
 @Injectable()
 export class AuthService {
-  private readonly loginUseCase: LoginUseCase;
-
   constructor(
     private readonly prisma: PrismaService,
-    private readonly authRepository: PrismaAuthRepository,
-    private readonly passwordHasher: BcryptPasswordHasher,
-    private readonly tokenService: JwtTokenService,
-    private readonly auditLogger: ConsoleAuditLogger,
-  ) {
-    this.loginUseCase = new LoginUseCase({
-      authRepository: this.authRepository,
-      passwordHasher: this.passwordHasher,
-      tokenService: this.tokenService,
-      auditLogger: this.auditLogger,
-      config: {
-        ...defaultAuthConfig,
-        issuer: programPartition.authIssuer,
-        allowLogin: true,
-        requireVerifiedEmailForLogin: false,
-        sessionTtlSeconds: 86400,
-      },
-    });
-  }
+    private readonly tokenService: EnhancedJwtTokenService,
+  ) {}
 
-  /**
-   * Phase 2: Login with email and password
-   * Individual account authentication
-   */
-  async login(dto: LoginDto) {
-    const credentials: LoginCredentials = { email: dto.email, password: dto.password };
-    const result = await this.loginUseCase.execute(credentials);
+  // ─── Login / Session ────────────────────────────────────────────────────────
 
-    if (!result.success) {
-      throw new UnauthorizedException(result.error.message);
+  async login(dto: LoginDto, ipAddress?: string, userAgent?: string) {
+    const admin = await this.prisma.adminUser.findUnique({ where: { email: dto.email.toLowerCase().trim() } });
+
+    // Constant-time: always hash-compare even if user missing to prevent timing attacks
+    const dummyHash = '$2b$10$dummyhashfortimingnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn';
+    const passwordValid = await bcryptCompare(dto.password, admin?.passwordHash ?? dummyHash);
+
+    if (!admin || !passwordValid) {
+      throw new UnauthorizedException('Invalid email or password.');
     }
-
-    // Fetch org context not stored in JWT
-    const admin = await this.prisma.adminUser.findUnique({
-      where: { id: result.user.id },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        isActive: true,
-        organizationId: true,
-      },
-    });
-
-    if (!admin?.isActive) {
+    if (!admin.isActive) {
       throw new UnauthorizedException('This account has been disabled.');
     }
 
-    // Update last login
-    await this.prisma.adminUser.update({
-      where: { id: admin.id },
-      data: { lastLoginAt: new Date() },
+    // Resolve primary organization membership
+    const membership = await this.prisma.organizationMember.findFirst({
+      where: { adminUserId: admin.id, isActive: true },
+      include: { organization: { select: { id: true, name: true, slug: true, status: true } } },
+      orderBy: { joinedAt: 'asc' },
     });
 
+    const input: CreateSessionInput = {
+      adminId: admin.id,
+      email: admin.email,
+      platformRole: admin.platformRole ?? undefined,
+      organizationId: membership?.organizationId,
+      organizationRole: membership?.organizationRole,
+    };
+
+    const { tokens, sessionId } = await this.tokenService.createSession(input, ipAddress, userAgent);
+
+    await this.prisma.adminUser.update({ where: { id: admin.id }, data: { lastLoginAt: new Date() } });
+
     return {
-      accessToken: result.session.accessToken,
+      tokens,
+      sessionId,
       admin: {
         id: admin.id,
         email: admin.email,
         firstName: admin.firstName,
         lastName: admin.lastName,
-        role: admin.role,
-        organizationId: admin.organizationId,
+        platformRole: admin.platformRole,
+        activeOrganization: membership
+          ? {
+              id: membership.organization.id,
+              name: membership.organization.name,
+              role: membership.organizationRole,
+              status: membership.organization.status,
+            }
+          : null,
       },
     };
   }
 
-  /**
-   * Phase 2: Logout (invalidate session)
-   * Frontend typically handles token deletion, but backend can track logout for audit
-   */
-  async logout(adminId: string) {
-    const admin = await this.prisma.adminUser.findUnique({
-      where: { id: adminId },
-    });
-
-    if (!admin) {
-      throw new UnauthorizedException('Admin not found.');
-    }
-
-    // Log logout event
-    await this.auditLogger.log({
-      adminId,
-      action: 'logout',
-      targetType: 'AdminUser',
-      targetId: adminId,
-    });
-
-    return { message: 'Logged out successfully' };
+  async logout(sessionId: string): Promise<void> {
+    await this.tokenService.revokeSession(sessionId);
   }
 
-  /**
-   * Phase 2: Get current authenticated user info
-   */
-  async getMe(adminId: string) {
+  async refreshSession(refreshToken: string, ipAddress?: string, userAgent?: string) {
+    return this.tokenService.rotateRefreshToken(refreshToken, ipAddress, userAgent);
+  }
+
+  // ─── Bootstrap ──────────────────────────────────────────────────────────────
+
+  async bootstrap(adminId: string) {
     const admin = await this.prisma.adminUser.findUnique({
       where: { id: adminId },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        isActive: true,
-        organizationId: true,
-        lastLoginAt: true,
-        createdAt: true,
+      include: {
+        organizationMembers: {
+          where: { isActive: true },
+          include: {
+            organization: { select: { id: true, name: true, slug: true, status: true, settings: true } },
+          },
+          orderBy: { joinedAt: 'asc' },
+          take: 1,
+        },
       },
     });
 
-    if (!admin) {
-      throw new UnauthorizedException('Admin not found.');
-    }
+    if (!admin || !admin.isActive) throw new UnauthorizedException('Account not found or disabled.');
 
-    if (!admin.isActive) {
-      throw new UnauthorizedException('This account has been disabled.');
-    }
+    const membership = admin.organizationMembers[0];
+    const org = membership?.organization;
+    const settings = (org?.settings as Record<string, unknown>) ?? {};
 
-    return admin;
-  }
+    const isPlatformAdmin = admin.platformRole === PlatformRole.PLATFORM_SUPER_ADMIN;
 
-  /**
-   * Phase 2: Initiate forgot password flow
-   * TODO: Integrate with email service (Resend, SendGrid, etc.)
-   * Generate reset token and send via email
-   */
-  async initiateForgotPassword(email: string) {
-    const admin = await this.prisma.adminUser.findUnique({
-      where: { email },
-    });
-
-    if (!admin) {
-      // Security: Don't reveal if email exists
-      return { message: 'If the email exists, a password reset link has been sent.' };
-    }
-
-    if (!admin.isActive) {
-      throw new BadRequestException('This account has been disabled.');
-    }
-
-    // TODO: Generate reset token and send email
-    // For now, return success response
-    console.log(`[TODO] Send password reset email to ${email}`);
+    const permissions = this.resolvePermissions(isPlatformAdmin, membership?.organizationRole);
 
     return {
-      message: 'Password reset link sent to your email. It expires in 1 hour.',
-    };
-  }
-
-  /**
-   * Phase 2: Reset password with token
-   * TODO: Validate reset token before allowing password change
-   */
-  async resetPassword(resetToken: string, newPassword: string) {
-    // TODO: Validate reset token and get associated email
-    // For now, this is a stub
-    throw new BadRequestException('Password reset functionality requires email service integration.');
-  }
-
-  /**
-   * Phase 2: Change password (authenticated user)
-   * User must provide current password to change it
-   */
-  async changePassword(adminId: string, currentPassword: string, newPassword: string) {
-    const admin = await this.prisma.adminUser.findUnique({
-      where: { id: adminId },
-    });
-
-    if (!admin) {
-      throw new UnauthorizedException('Admin not found.');
-    }
-
-    // Verify current password
-    const passwordValid = await this.passwordHasher.compare(
-      currentPassword,
-      admin.passwordHash,
-    );
-
-    if (!passwordValid) {
-      throw new BadRequestException('Current password is incorrect.');
-    }
-
-    // Hash new password
-    const newPasswordHash = await this.passwordHasher.hash(newPassword);
-
-    // Update password
-    await this.prisma.adminUser.update({
-      where: { id: adminId },
-      data: { passwordHash: newPasswordHash },
-    });
-
-    return { message: 'Password changed successfully.' };
-  }
-
-  /**
-   * Phase 2: Send admin invitation email
-   * Org admin invites new team member
-   * TODO: Integrate with email service to send invitation with link
-   */
-  async sendAdminInvitation(actingAdminId: string, inviteDto: InviteAdminDto) {
-    const actingAdmin = await this.prisma.adminUser.findUnique({
-      where: { id: actingAdminId },
-    });
-
-    if (!actingAdmin) {
-      throw new UnauthorizedException('Acting admin not found.');
-    }
-
-    // Check if email already exists
-    const existingAdmin = await this.prisma.adminUser.findUnique({
-      where: { email: inviteDto.email },
-    });
-
-    if (existingAdmin) {
-      throw new ConflictException('An admin with this email already exists.');
-    }
-
-    // Check acting admin has permission to invite (must be org_admin or super_admin)
-    if (!['org_admin', 'super_admin'].includes(actingAdmin.role)) {
-      throw new UnauthorizedException('You do not have permission to invite admins.');
-    }
-
-    // Create pending invitation
-    // TODO: Generate invitation token and send via email
-    console.log(
-      `[TODO] Send invitation email to ${inviteDto.email} for role ${inviteDto.role}`,
-    );
-
-    return {
-      message: `Invitation sent to ${inviteDto.email}. They have 7 days to accept.`,
-      email: inviteDto.email,
-    };
-  }
-
-  /**
-   * Phase 2: Accept admin invitation
-   * New user accepts invitation and creates account with password
-   * TODO: Validate invitation token and create user account
-   */
-  async acceptAdminInvitation(invitationToken: string, password: string) {
-    // TODO: Validate token, extract email, role, and orgId
-    // For now, this is a stub
-    throw new BadRequestException('Invitation acceptance requires email service integration.');
-  }
-
-  /**
-   * Phase 2: Check if email exists
-   * Used by frontend during signup/invitation acceptance flow
-   */
-  async checkEmailExists(email: string) {
-    const admin = await this.prisma.adminUser.findUnique({
-      where: { email },
-      select: { id: true },
-    });
-
-    return {
-      exists: !!admin,
-      email,
-    };
-  }
-
-  /**
-   * Phase 2: Verify email token
-   * TODO: Implement email verification with tokens
-   */
-  async verifyEmailToken(token: string) {
-    // TODO: Validate email verification token
-    throw new BadRequestException('Email verification requires email service integration.');
-  }
-
-  /**
-   * Phase 2: Resend verification email
-   * TODO: Generate new verification token and send
-   */
-  async resendVerificationEmail(email: string) {
-    const admin = await this.prisma.adminUser.findUnique({
-      where: { email },
-    });
-
-    if (!admin) {
-      // Security: Don't reveal if email exists
-      return { message: 'If the email exists, a verification email has been sent.' };
-    }
-
-    // TODO: Generate verification token and send email
-    return {
-      message: 'Verification email sent. Please check your inbox.',
-    };
-  }
-
-  /**
-   * Phase 2: Get session status
-   * Check if JWT is still valid and return user info
-   */
-  async getSessionStatus(adminId: string) {
-    const admin = await this.prisma.adminUser.findUnique({
-      where: { id: adminId },
-      select: {
-        id: true,
-        email: true,
-        isActive: true,
-        role: true,
-      },
-    });
-
-    if (!admin) {
-      throw new UnauthorizedException('Session invalid: Admin not found.');
-    }
-
-    return {
-      valid: admin.isActive,
-      admin: {
+      user: {
         id: admin.id,
         email: admin.email,
-        role: admin.role,
-        isActive: admin.isActive,
+        displayName: [admin.firstName, admin.lastName].filter(Boolean).join(' ') || admin.email,
       },
+      platformRole: admin.platformRole ?? null,
+      activeOrganization: org
+        ? {
+            id: org.id,
+            name: org.name,
+            role: membership?.organizationRole ?? null,
+            status: org.status,
+          }
+        : null,
+      settings: {
+        timezone: (settings['timezone'] as string) ?? 'America/Detroit',
+        currency: (settings['currency'] as string) ?? 'USD',
+        environment: process.env.NODE_ENV ?? 'development',
+        features: (settings['features'] as Record<string, boolean>) ?? {
+          fundingPrograms: true,
+          documentManagement: true,
+          financialTracking: true,
+          communications: true,
+        },
+      },
+      permissions,
     };
   }
 
-  /**
-   * Phase 2: Disable user account (soft delete)
-   * Admin action - requires org_admin or super_admin
-   */
-  async disableUser(actingAdminId: string, targetUserId: string) {
-    const actingAdmin = await this.prisma.adminUser.findUnique({
-      where: { id: actingAdminId },
+  // ─── Password management ────────────────────────────────────────────────────
+
+  async changePassword(adminId: string, dto: ChangePasswordDto) {
+    const admin = await this.prisma.adminUser.findUnique({ where: { id: adminId } });
+    if (!admin) throw new UnauthorizedException('Account not found.');
+
+    const valid = await bcryptCompare(dto.currentPassword, admin.passwordHash);
+    if (!valid) throw new BadRequestException('Current password is incorrect.');
+
+    const newHash = await bcryptHash(dto.newPassword, 12);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.adminUser.update({
+        where: { id: adminId },
+        data: { passwordHash: newHash, passwordChangedAt: new Date() },
+      });
+      // Revoke all active sessions — user must log in again
+      await tx.session.updateMany({
+        where: { adminUserId: adminId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
     });
 
-    if (!actingAdmin) {
-      throw new UnauthorizedException('Acting admin not found.');
-    }
-
-    // Check permissions
-    if (!['org_admin', 'super_admin'].includes(actingAdmin.role)) {
-      throw new UnauthorizedException('You do not have permission to disable users.');
-    }
-
-    const targetUser = await this.prisma.adminUser.findUnique({
-      where: { id: targetUserId },
-    });
-
-    if (!targetUser) {
-      throw new BadRequestException('Target user not found.');
-    }
-
-    // Disable user
-    const updated = await this.prisma.adminUser.update({
-      where: { id: targetUserId },
-      data: { isActive: false },
-      select: {
-        id: true,
-        email: true,
-        isActive: true,
-      },
-    });
-
-    // Log action
-    await this.auditLogger.log({
-      adminId: actingAdminId,
-      action: 'disabled_user',
-      targetType: 'AdminUser',
-      targetId: targetUserId,
-    });
-
-    return {
-      message: `User ${updated.email} has been disabled.`,
-      user: updated,
-    };
+    return { message: 'Password changed. Please log in again.' };
   }
 
-  /**
-   * Phase 2: Enable user account
-   * Admin action - requires org_admin or super_admin
-   */
-  async enableUser(actingAdminId: string, targetUserId: string) {
-    const actingAdmin = await this.prisma.adminUser.findUnique({
-      where: { id: actingAdminId },
-    });
-
-    if (!actingAdmin) {
-      throw new UnauthorizedException('Acting admin not found.');
+  async initiateForgotPassword(email: string) {
+    const admin = await this.prisma.adminUser.findUnique({ where: { email } });
+    // Always return the same message to avoid user enumeration
+    if (!admin || !admin.isActive) {
+      return { message: 'If that email is registered, a reset link has been sent.' };
     }
+    // TODO: generate reset token and send via email service
+    console.log(`[TODO] Send password reset email to ${email}`);
+    return { message: 'If that email is registered, a reset link has been sent.' };
+  }
 
-    // Check permissions
-    if (!['org_admin', 'super_admin'].includes(actingAdmin.role)) {
-      throw new UnauthorizedException('You do not have permission to enable users.');
+  async resetPassword(_resetToken: string, _newPassword: string) {
+    throw new BadRequestException('Password reset requires email service integration.');
+  }
+
+  // ─── Session endpoint ───────────────────────────────────────────────────────
+
+  async getSession(adminId: string) {
+    const admin = await this.prisma.adminUser.findUnique({
+      where: { id: adminId },
+      select: { id: true, email: true, isActive: true, platformRole: true },
+    });
+    if (!admin || !admin.isActive) throw new UnauthorizedException('Session invalid.');
+    return { valid: true, admin };
+  }
+
+  // ─── Private helpers ────────────────────────────────────────────────────────
+
+  private resolvePermissions(isPlatformAdmin: boolean, orgRole?: string): string[] {
+    if (isPlatformAdmin) {
+      return [
+        'platform.admin',
+        'organization.read',
+        'organization.update',
+        'members.manage',
+        'clients.read',
+        'clients.update',
+        'programs.manage',
+        'funding.manage',
+        'documents.manage',
+      ];
     }
-
-    const targetUser = await this.prisma.adminUser.findUnique({
-      where: { id: targetUserId },
-    });
-
-    if (!targetUser) {
-      throw new BadRequestException('Target user not found.');
+    if (orgRole === 'org_owner') {
+      return [
+        'organization.read',
+        'organization.update',
+        'members.manage',
+        'clients.read',
+        'clients.update',
+        'programs.manage',
+        'funding.manage',
+        'documents.manage',
+      ];
     }
-
-    // Enable user
-    const updated = await this.prisma.adminUser.update({
-      where: { id: targetUserId },
-      data: { isActive: true },
-      select: {
-        id: true,
-        email: true,
-        isActive: true,
-      },
-    });
-
-    // Log action
-    await this.auditLogger.log({
-      adminId: actingAdminId,
-      action: 'enabled_user',
-      targetType: 'AdminUser',
-      targetId: targetUserId,
-    });
-
-    return {
-      message: `User ${updated.email} has been enabled.`,
-      user: updated,
-    };
+    if (orgRole === 'org_admin') {
+      return [
+        'organization.read',
+        'members.manage',
+        'clients.read',
+        'clients.update',
+        'programs.manage',
+        'documents.manage',
+      ];
+    }
+    // reviewer
+    return ['organization.read', 'clients.read'];
   }
 }
-

@@ -40,66 +40,16 @@ export class OrganizationsService {
     };
   }
 
-  async updateOrganizationSettings(organizationId: string, settings: Record<string, any>) {
-    const organization = await this.prisma.organization.update({
-      where: { id: organizationId },
-      data: {
-        settings: {
-          ...((organization.settings || {}) as Record<string, any>),
-          ...settings,
-        },
-      },
-    });
-
-    return {
-      id: organization.id,
-      name: organization.name,
-      settings: organization.settings,
+  async updateOrganizationSettings(organizationId: string, settings: Record<string, unknown>) {
+    const existing = await this.getOrganization(organizationId);
+    const merged = {
+      ...((existing.settings ?? {}) as Record<string, unknown>),
+      ...settings,
     };
-  }
-
-  async listAdminUsers(organizationId: string) {
-    // Verify organization exists
-    await this.getOrganization(organizationId);
-
-    return this.prisma.adminUser.findMany({
-      where: { organizationId },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        isActive: true,
-        lastLoginAt: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'desc' },
+    const updated = await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { settings: merged as Parameters<typeof this.prisma.organization.update>[0]['data']['settings'] },
     });
-  }
-
-  async getAdminUser(organizationId: string, adminId: string) {
-    const admin = await this.prisma.adminUser.findFirst({
-      where: {
-        id: adminId,
-        organizationId,
-      },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        isActive: true,
-        lastLoginAt: true,
-        createdAt: true,
-      },
-    });
-
-    if (!admin) {
-      throw new NotFoundException('Admin user not found in this organization');
-    }
-
-    return admin;
+    return { id: updated.id, name: updated.name, settings: updated.settings };
   }
 }

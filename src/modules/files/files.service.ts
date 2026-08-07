@@ -224,16 +224,19 @@ export class FilesService {
   }
 
   async createFileAsset(adminId: string, input: CreateFileAssetInput) {
-    const admin = await this.prisma.adminUser.findUnique({
-      where: { id: adminId },
-      select: { organizationId: true },
-    });
+    const admin = await this.prisma.adminUser.findUnique({ where: { id: adminId } });
     if (!admin) throw new NotFoundException('Admin not found.');
 
     let programId = input.programId;
     if (!programId) {
+      // Find a program accessible to the user via their org memberships
+      const membership = await this.prisma.organizationMember.findFirst({
+        where: { adminUserId: adminId, isActive: true },
+        select: { organizationId: true },
+      });
+      if (!membership) throw new BadRequestException('No organization membership found.');
       const program = await this.prisma.program.findFirst({
-        where: { organizationId: admin.organizationId, status: 'active' },
+        where: { organizationId: membership.organizationId, status: 'active' },
         select: { id: true },
         orderBy: { createdAt: 'asc' },
       });
@@ -278,13 +281,13 @@ export class FilesService {
     const asset = await this.prisma.fileAsset.findUnique({ where: { id } });
     if (!asset) throw new NotFoundException('File not found.');
 
-    const admin = await this.prisma.adminUser.findUnique({
-      where: { id: adminId },
-      select: { role: true },
+    const membership = await this.prisma.organizationMember.findFirst({
+      where: { adminUserId: adminId, isActive: true },
+      select: { organizationRole: true },
     });
 
     const isOwner = asset.uploadedById === adminId;
-    const isPrivileged = admin && ['super_admin', 'org_admin'].includes(admin.role);
+    const isPrivileged = membership && ['org_owner', 'org_admin'].includes(membership.organizationRole);
     if (!isOwner && !isPrivileged) throw new ForbiddenException('Not allowed to delete this file.');
 
     await this.prisma.fileAsset.delete({ where: { id } });
