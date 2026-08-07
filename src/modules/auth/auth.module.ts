@@ -1,19 +1,21 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { EnhancedJwtTokenService } from './services/enhanced-jwt-token.service';
-import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
+import { PrismaAuthRepository } from './infrastructure/prisma-auth-repository';
+import { BcryptPasswordHasher } from './infrastructure/bcrypt-password-hasher';
+import { JwtTokenService } from './infrastructure/jwt-token-service';
+import { ConsoleAuditLogger } from './infrastructure/console-audit-logger';
 
 @Module({
-  imports: [ConfigModule],
   controllers: [AuthController],
   providers: [
     AuthService,
-    EnhancedJwtTokenService,
-    AdminJwtGuard,
+    PrismaAuthRepository,
+    BcryptPasswordHasher,
+    JwtTokenService,
+    ConsoleAuditLogger,
   ],
-  exports: [AuthService, EnhancedJwtTokenService, AdminJwtGuard],
+  exports: [AuthService],
 })
 export class AuthModule {}
 

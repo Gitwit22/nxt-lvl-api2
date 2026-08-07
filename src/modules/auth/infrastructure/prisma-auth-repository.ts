@@ -60,38 +60,38 @@ export class PrismaAuthRepository implements AuthRepository {
 
   async findUserById(id: string): Promise<AuthUser | undefined> {
     const admin = await this.prisma.adminUser.findUnique({ where: { id } });
-    return admin ? toAuthUser(admin as unknown as AdminRow) : undefined;
+    return admin ? toAuthUser(admin as AdminRow) : undefined;
   }
 
   async findUserByEmail(email: string): Promise<AuthUser | undefined> {
     const admin = await this.prisma.adminUser.findUnique({
       where: { email: email.toLowerCase() },
     });
-    return admin ? toAuthUser(admin as unknown as AdminRow) : undefined;
+    return admin ? toAuthUser(admin as AdminRow) : undefined;
   }
 
   async findAccountByEmail(email: string): Promise<AuthAccount | undefined> {
     const admin = await this.prisma.adminUser.findUnique({
       where: { email: email.toLowerCase() },
     });
-    return admin ? toAuthAccount(admin as unknown as AdminRow) : undefined;
+    return admin ? toAuthAccount(admin as AdminRow) : undefined;
   }
 
   async findAccountByUserId(userId: string): Promise<AuthAccount | undefined> {
     const admin = await this.prisma.adminUser.findUnique({ where: { id: userId } });
-    return admin ? toAuthAccount(admin as unknown as AdminRow) : undefined;
+    return admin ? toAuthAccount(admin as AdminRow) : undefined;
   }
 
   async updateAccount(id: string, patch: Partial<AuthAccount>): Promise<AuthAccount> {
     const data: Record<string, unknown> = { updatedAt: patch.updatedAt ?? new Date() };
     if (patch.lastLoginAt !== undefined) data['lastLoginAt'] = patch.lastLoginAt;
     const admin = await this.prisma.adminUser.update({ where: { id }, data });
-    return toAuthAccount(admin as unknown as AdminRow);
+    return toAuthAccount(admin as AdminRow);
   }
 
   async updateUser(id: string, _patch: Partial<AuthUser>): Promise<AuthUser> {
     const admin = await this.prisma.adminUser.findUniqueOrThrow({ where: { id } });
-    return toAuthUser(admin as unknown as AdminRow);
+    return toAuthUser(admin as AdminRow);
   }
 
   // ── Session (stateless JWT — no server-side persistence) ──

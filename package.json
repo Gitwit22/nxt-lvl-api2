@@ -4,9 +4,9 @@
   "description": "Program-based API for NXT LVL products",
   "main": "dist/main.js",
   "scripts": {
-    "build": "prisma generate && nest build && npx tsc prisma/seed.ts --outDir prisma --esModuleInterop --resolveJsonModule --module commonjs --target es2020 --moduleResolution node --skipLibCheck",
+    "build": "prisma generate && nest build",
     "start": "node dist/main",
-    "start:prod": "npx prisma db push && npx prisma db seed && node dist/main",
+    "start:prod": "npx prisma db push --accept-data-loss && npx prisma db seed && node dist/main",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "lint": "eslint \"src/**/*.ts\"",
