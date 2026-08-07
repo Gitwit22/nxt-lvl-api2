@@ -83,7 +83,7 @@ async function main() {
 
   console.log(`✅ Program created: ${program.name} (${program.id})`);
 
-  // Optional: Cinema Studio program for testing
+  // Secondary: Cinema Studio program for testing
   const cinemaStudioProgram = await prisma.program.upsert({
     where: {
       organizationId_slug: {
@@ -106,14 +106,46 @@ async function main() {
     },
   });
 
-  // Default categories for main program
+  // Secondary: Client Intake program (ClientFlow Hub)
+  await prisma.program.upsert({
+    where: {
+      organizationId_slug: {
+        organizationId: organization.id,
+        slug: 'client-intake',
+      },
+    },
+    update: {
+      name: 'Client Intake & Workflow',
+      type: 'business_directory',
+      status: 'active',
+    },
+    create: {
+      organizationId: organization.id,
+      name: 'Client Intake & Workflow',
+      slug: 'client-intake',
+      type: 'business_directory',
+      status: 'active',
+      settings: {},
+    },
+  });
+
+  // Default categories for main program (fba-app)
   const defaultCategories = [
+    'Restaurants & Food',
+    'Beauty & Personal Care',
+    'Retail & Boutiques',
+    'Health & Wellness',
+    'Finance & Insurance',
     'Technology',
-    'Healthcare',
-    'Education',
-    'Consulting',
-    'Legal',
+    'Home Services',
+    'Consulting & Professional Services',
+    'Education & Tutoring',
+    'Legal Services',
     'Nonprofit',
+    'Events & Entertainment',
+    'Automotive',
+    'Real Estate',
+    'Media & Marketing',
   ];
 
   for (let index = 0; index < defaultCategories.length; index += 1) {
