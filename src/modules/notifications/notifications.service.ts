@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+﻿import { Injectable, Logger } from '@nestjs/common';
 import {
   SendEmailUseCase,
   ResendEmailProvider,
@@ -32,21 +32,17 @@ export class NotificationsService {
     expiresAt: Date;
   }): Promise<void> {
     if (!this.useCase) return;
-    let appUrl = (process.env['APP_URL'] ?? programPartition.appUrl).trim();
-    // Handle comma-separated URLs (take first one)
-    if (appUrl.includes(',')) {
-      appUrl = appUrl.split(',')[0].trim();
-    }
+    const appUrl = process.env['APP_URL'] ?? programPartition.appUrl;
     const editUrl = `${appUrl}/edit?token=${options.token}`;
     await this.useCase.execute({
       to: options.to,
-      subject: `Edit your listing — ${options.businessName}`,
+      subject: `Edit your listing ΓÇö ${options.businessName}`,
       html: `
         <p>Hi there,</p>
         <p>Here is your one-time edit link for <strong>${options.businessName}</strong>:</p>
         <p><a href="${editUrl}" style="color:#C45A8A">${editUrl}</a></p>
         <p>This link expires on ${options.expiresAt.toUTCString()}. Do not share it.</p>
-        <p>— ${programPartition.appName}</p>
+        <p>ΓÇö ${programPartition.appName}</p>
       `,
       text: `Edit your listing: ${editUrl}\n\nExpires: ${options.expiresAt.toUTCString()}`,
     });
@@ -59,12 +55,12 @@ export class NotificationsService {
     if (!this.useCase) return;
     await this.useCase.execute({
       to: options.to,
-      subject: `Update request received — ${options.businessName}`,
+      subject: `Update request received ΓÇö ${options.businessName}`,
       html: `
         <p>Hi there,</p>
         <p>We received your update request for <strong>${options.businessName}</strong>.</p>
         <p>Your changes are now pending admin review. We will email you once a decision is made.</p>
-        <p>— ${programPartition.appName}</p>
+        <p>ΓÇö ${programPartition.appName}</p>
       `,
       text:
         `We received your update request for ${options.businessName}.\n` +
@@ -82,20 +78,20 @@ export class NotificationsService {
     await this.useCase.execute({
       to: options.to,
       subject: approved
-        ? `Update approved — ${options.businessName}`
-        : `Update not approved — ${options.businessName}`,
+        ? `Update approved ΓÇö ${options.businessName}`
+        : `Update not approved ΓÇö ${options.businessName}`,
       html: approved
         ? `
           <p>Hi there,</p>
           <p>Your update request for <strong>${options.businessName}</strong> was approved and is now live.</p>
           <p>Thank you for keeping your listing current.</p>
-          <p>— ${programPartition.appName}</p>
+          <p>ΓÇö ${programPartition.appName}</p>
         `
         : `
           <p>Hi there,</p>
           <p>Your update request for <strong>${options.businessName}</strong> was reviewed but not approved.</p>
           <p>You can request another edit link and submit updated changes at any time.</p>
-          <p>— ${programPartition.appName}</p>
+          <p>ΓÇö ${programPartition.appName}</p>
         `,
       text: approved
         ? `Your update request for ${options.businessName} was approved and is now live.`

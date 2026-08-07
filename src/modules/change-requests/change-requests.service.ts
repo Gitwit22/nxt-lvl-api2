@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+﻿import { Injectable, NotFoundException } from '@nestjs/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -32,12 +32,6 @@ export class ChangeRequestsService {
       where: { status: 'pending_review' },
       orderBy: { createdAt: 'desc' },
       include: { business: true },
-    });
-  }
-
-  countPending(): Promise<number> {
-    return this.prisma.businessChangeRequest.count({
-      where: { status: 'pending_review' },
     });
   }
 

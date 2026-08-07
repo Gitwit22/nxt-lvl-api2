@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+﻿import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateBusinessSubmissionDto } from './dto/create-business-submission.dto';
@@ -67,12 +67,6 @@ export class BusinessSubmissionsService {
     return this.prisma.businessSubmission.findMany({
       where: { status: 'pending_review' },
       orderBy: { createdAt: 'desc' },
-    });
-  }
-
-  countPending(programSlug: string): Promise<number> {
-    return this.prisma.businessSubmission.count({
-      where: { status: 'pending_review', program: { slug: programSlug } },
     });
   }
 
