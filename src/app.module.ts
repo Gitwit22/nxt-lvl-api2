@@ -14,7 +14,6 @@ import { EditTokensModule } from './modules/edit-tokens/edit-tokens.module';
 import { FilesModule } from './modules/files/files.module';
 import { HealthModule } from './modules/health/health.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
-import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { ProgramsModule } from './modules/programs/programs.module';
 import { CinemaStudioModule } from './modules/cinema-studio/cinema-studio.module';
 import { StudioCoreModule } from './modules/studio-core/studio-core.module';
@@ -37,7 +36,6 @@ import { PrismaModule } from './prisma/prisma.module';
     PrismaModule,
     HealthModule,
     AuthModule,
-    OrganizationsModule,
     ProgramsModule,
     CinemaStudioModule,
     StudioCoreModule,
