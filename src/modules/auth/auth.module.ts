@@ -3,7 +3,6 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { PrismaAuthRepository } from './infrastructure/prisma-auth-repository';
 import { BcryptPasswordHasher } from './infrastructure/bcrypt-password-hasher';
-import { JwtTokenService } from './infrastructure/jwt-token-service';
 import { ConsoleAuditLogger } from './infrastructure/console-audit-logger';
 
 @Module({
@@ -12,7 +11,6 @@ import { ConsoleAuditLogger } from './infrastructure/console-audit-logger';
     AuthService,
     PrismaAuthRepository,
     BcryptPasswordHasher,
-    JwtTokenService,
     ConsoleAuditLogger,
   ],
   exports: [AuthService],

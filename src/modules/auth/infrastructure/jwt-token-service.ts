@@ -1,10 +1,8 @@
-import { Injectable } from '@nestjs/common';
 import { sign, verify as jwtVerify } from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
 import { AuthErrorCode, createAuthError } from '@nxtlvl/auth-core';
 import type { SignTokenInput, TokenPayload, TokenService } from '@nxtlvl/auth-core';
 
-@Injectable()
 export class JwtTokenService implements TokenService {
   constructor(private readonly issuer?: string) {}
 
