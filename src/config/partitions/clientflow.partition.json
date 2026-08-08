@@ -1,0 +1,11 @@
+{
+  "customerName": "NXT LVL Technology Solutions",
+  "organizationSlug": "nxt-lvl",
+  "organizationName": "NXT LVL Technology Solutions",
+  "primaryProgramSlug": "clientflow",
+  "primaryProgramName": "ClientFlow Hub",
+  "authIssuer": "clientflow-api",
+  "appName": "ClientFlow Hub",
+  "appUrl": "https://clientflow-hub.pages.dev",
+  "storageNamespace": "clientflow-hub"
+}

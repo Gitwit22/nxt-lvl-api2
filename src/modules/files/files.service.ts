@@ -1,7 +1,14 @@
-import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Scope,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { REQUEST } from '@nestjs/core';
 import { S3Client, DeleteObjectCommand, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import programPartition from '../../config/program.partition.json';
+import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 
 export type FileAction = 'upload' | 'download' | 'delete';
 
@@ -22,10 +29,15 @@ export interface CreateFileUrlResult {
   expiresInSeconds: number;
 }
 
-@Injectable()
+@Injectable({ scope: Scope.REQUEST })
 export class FilesService {
-  private readonly storageNamespace = programPartition.storageNamespace;
   private readonly s3Client = this.createClient();
+
+  constructor(@Inject(REQUEST) private readonly request: PartitionRequest) {}
+
+  private get storageNamespace(): string {
+    return this.request.partition.storageNamespace;
+  }
 
   private createClient(): S3Client | null {
     const accountId = process.env['R2_ACCOUNT_ID']?.trim();

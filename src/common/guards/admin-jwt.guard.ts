@@ -1,13 +1,11 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import type { PartitionRequest } from '../interfaces/partition-request.interface';
 import { JwtTokenService } from '../../modules/auth/infrastructure/jwt-token-service';
-
-// JwtTokenService has no injected deps — reads from process.env
-const tokenService = new JwtTokenService();
 
 @Injectable()
 export class AdminJwtGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<{ headers: Record<string, string | undefined> }>();
+    const request = context.switchToHttp().getRequest<PartitionRequest>();
     const authHeader = request.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -17,6 +15,7 @@ export class AdminJwtGuard implements CanActivate {
     const token = authHeader.substring(7);
 
     try {
+      const tokenService = new JwtTokenService(request.partition.authIssuer);
       const payload = await tokenService.verify(token);
       request.headers['x-admin-id'] = payload.sub;
       return true;

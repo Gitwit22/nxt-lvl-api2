@@ -2,10 +2,10 @@
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
-import programPartition from './config/program.partition.json';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
+import { PartitionService } from './common/services/partition.service';
 
 function normalizeOrigin(origin: string): string {
   return origin.trim().replace(/\/+$/, '').toLowerCase();
@@ -35,6 +35,7 @@ function isOriginAllowed(requestOrigin: string, configuredOrigins: string[]): bo
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const partitionService = app.get(PartitionService);
 
   // Security headers (helmet)
   app.use(
@@ -43,10 +44,12 @@ async function bootstrap() {
     }),
   );
 
-  const corsOrigins = (process.env.CORS_ORIGIN ?? '')
-    .split(',')
+  const corsOrigins = [
+    ...(process.env.CORS_ORIGIN ?? '').split(','),
+    ...partitionService.getPartitions().map((partition) => partition.appUrl),
+  ]
     .map((origin) => origin.trim())
-    .filter((origin) => origin.length > 0);
+    .filter((origin, index, origins) => origin.length > 0 && origins.indexOf(origin) === index);
 
   app.enableCors({
     origin: (
@@ -62,7 +65,7 @@ async function bootstrap() {
     },
     credentials: true,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-App-Partition'],
   });
 
   app.setGlobalPrefix('api/v1');
@@ -80,6 +83,7 @@ async function bootstrap() {
   app.useGlobalInterceptors(new ResponseInterceptor());
   app.useGlobalFilters(new GlobalExceptionFilter());
 
+  const programPartition = partitionService.getDefaultPartition();
   const config = new DocumentBuilder()
     .setTitle(`${programPartition.appName} API 2`)
     .setDescription(`Dedicated API 2 partition for ${programPartition.customerName}.`)

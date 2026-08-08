@@ -1,7 +1,9 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { PartitionMiddleware } from './common/middleware/partition.middleware';
+import { PartitionModule } from './common/partition.module';
 import { environmentSchema } from './config/env';
 import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -33,6 +35,7 @@ import { PrismaModule } from './prisma/prisma.module';
         limit: 120,
       },
     ]),
+    PartitionModule,
     PrismaModule,
     HealthModule,
     AuthModule,
@@ -58,4 +61,8 @@ import { PrismaModule } from './prisma/prisma.module';
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(PartitionMiddleware).forRoutes('*');
+  }
+}

@@ -1,18 +1,19 @@
-﻿import { Injectable, Logger } from '@nestjs/common';
+﻿import { Inject, Injectable, Logger, Scope } from '@nestjs/common';
+import { REQUEST } from '@nestjs/core';
 import {
   SendEmailUseCase,
   ResendEmailProvider,
   ConsoleEmailLogger,
   loadNotificationConfig,
 } from '@nxtlvl/notification-core';
-import programPartition from '../../config/program.partition.json';
+import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 
-@Injectable()
+@Injectable({ scope: Scope.REQUEST })
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
   private readonly useCase: SendEmailUseCase | null = null;
 
-  constructor() {
+  constructor(@Inject(REQUEST) private readonly request: PartitionRequest) {
     try {
       const config = loadNotificationConfig();
       const provider = new ResendEmailProvider(config);
@@ -32,7 +33,8 @@ export class NotificationsService {
     expiresAt: Date;
   }): Promise<void> {
     if (!this.useCase) return;
-    const appUrl = process.env['APP_URL'] ?? programPartition.appUrl;
+    const partition = this.request.partition;
+    const appUrl = process.env['APP_URL'] ?? partition.appUrl;
     const editUrl = `${appUrl}/edit?token=${options.token}`;
     await this.useCase.execute({
       to: options.to,
@@ -42,7 +44,7 @@ export class NotificationsService {
         <p>Here is your one-time edit link for <strong>${options.businessName}</strong>:</p>
         <p><a href="${editUrl}" style="color:#C45A8A">${editUrl}</a></p>
         <p>This link expires on ${options.expiresAt.toUTCString()}. Do not share it.</p>
-        <p>ΓÇö ${programPartition.appName}</p>
+        <p>ΓÇö ${partition.appName}</p>
       `,
       text: `Edit your listing: ${editUrl}\n\nExpires: ${options.expiresAt.toUTCString()}`,
     });
@@ -53,6 +55,7 @@ export class NotificationsService {
     businessName: string;
   }): Promise<void> {
     if (!this.useCase) return;
+    const partition = this.request.partition;
     await this.useCase.execute({
       to: options.to,
       subject: `Update request received ΓÇö ${options.businessName}`,
@@ -60,7 +63,7 @@ export class NotificationsService {
         <p>Hi there,</p>
         <p>We received your update request for <strong>${options.businessName}</strong>.</p>
         <p>Your changes are now pending admin review. We will email you once a decision is made.</p>
-        <p>ΓÇö ${programPartition.appName}</p>
+        <p>ΓÇö ${partition.appName}</p>
       `,
       text:
         `We received your update request for ${options.businessName}.\n` +
@@ -74,6 +77,7 @@ export class NotificationsService {
     status: 'approved' | 'rejected';
   }): Promise<void> {
     if (!this.useCase) return;
+    const partition = this.request.partition;
     const approved = options.status === 'approved';
     await this.useCase.execute({
       to: options.to,
@@ -85,13 +89,13 @@ export class NotificationsService {
           <p>Hi there,</p>
           <p>Your update request for <strong>${options.businessName}</strong> was approved and is now live.</p>
           <p>Thank you for keeping your listing current.</p>
-          <p>ΓÇö ${programPartition.appName}</p>
+          <p>ΓÇö ${partition.appName}</p>
         `
         : `
           <p>Hi there,</p>
           <p>Your update request for <strong>${options.businessName}</strong> was reviewed but not approved.</p>
           <p>You can request another edit link and submit updated changes at any time.</p>
-          <p>ΓÇö ${programPartition.appName}</p>
+          <p>ΓÇö ${partition.appName}</p>
         `,
       text: approved
         ? `Your update request for ${options.businessName} was approved and is now live.`

@@ -6,6 +6,8 @@ import type { SignTokenInput, TokenPayload, TokenService } from '@nxtlvl/auth-co
 
 @Injectable()
 export class JwtTokenService implements TokenService {
+  constructor(private readonly issuer?: string) {}
+
   private get secret(): string {
     return process.env['JWT_SECRET'] ?? '';
   }
@@ -23,13 +25,17 @@ export class JwtTokenService implements TokenService {
         jti: randomUUID(),
       },
       this.secret,
-      { subject: input.sub, expiresIn: this.expiresIn as unknown as number },
+      {
+        subject: input.sub,
+        expiresIn: this.expiresIn as unknown as number,
+        issuer: this.issuer,
+      },
     );
   }
 
   async verify(token: string): Promise<TokenPayload> {
     try {
-      return jwtVerify(token, this.secret) as TokenPayload;
+      return jwtVerify(token, this.secret, { issuer: this.issuer }) as TokenPayload;
     } catch {
       throw createAuthError(AuthErrorCode.TOKEN_INVALID, 'Invalid or expired token.');
     }

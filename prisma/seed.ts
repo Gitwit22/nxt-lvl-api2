@@ -1,10 +1,13 @@
 import { PrismaClient } from '@prisma/client';
 import { hash } from 'bcrypt';
-import programPartition from '../src/config/program.partition.json';
+import clientflowPartition from '../src/config/partitions/clientflow.partition.json';
+import fbaAppPartition from '../src/config/partitions/fba-app.partition.json';
 
 const prisma = new PrismaClient();
 
 async function main() {
+  const programPartitions = [fbaAppPartition, clientflowPartition];
+  const programPartition = fbaAppPartition;
   const organization = await prisma.organization.upsert({
     where: { slug: programPartition.organizationSlug },
     update: {
@@ -17,27 +20,32 @@ async function main() {
     },
   });
 
-  const program = await prisma.program.upsert({
-    where: {
-      organizationId_slug: {
-        organizationId: organization.id,
-        slug: programPartition.primaryProgramSlug,
-      },
-    },
-    update: {
-      name: programPartition.primaryProgramName,
-      type: 'business_directory',
-      status: 'active',
-    },
-    create: {
-      organizationId: organization.id,
-      name: programPartition.primaryProgramName,
-      slug: programPartition.primaryProgramSlug,
-      type: 'business_directory',
-      status: 'active',
-      settings: {},
-    },
-  });
+  const programs = await Promise.all(
+    programPartitions.map((partition) =>
+      prisma.program.upsert({
+        where: {
+          organizationId_slug: {
+            organizationId: organization.id,
+            slug: partition.primaryProgramSlug,
+          },
+        },
+        update: {
+          name: partition.primaryProgramName,
+          type: 'business_directory',
+          status: 'active',
+        },
+        create: {
+          organizationId: organization.id,
+          name: partition.primaryProgramName,
+          slug: partition.primaryProgramSlug,
+          type: 'business_directory',
+          status: 'active',
+          settings: {},
+        },
+      }),
+    ),
+  );
+  const program = programs[0];
 
   const cinemaStudioProgram = await prisma.program.upsert({
     where: {
@@ -124,10 +132,12 @@ async function main() {
   }
 
   const adminPassword = await hash('4755Dett', 10);
+  const organizationAdminPassword = await hash('mbba2026', 10);
 
   await prisma.adminUser.upsert({
     where: { email: 'nxtlvltechllc@gmail.com' },
     update: {
+      organizationId: organization.id,
       isActive: true,
       role: 'super_admin',
       passwordHash: adminPassword,
@@ -138,6 +148,24 @@ async function main() {
       passwordHash: adminPassword,
       role: 'super_admin',
       firstName: 'Platform',
+      lastName: 'Admin',
+    },
+  });
+
+  await prisma.adminUser.upsert({
+    where: { email: 'eammanagementllc@gmail.com' },
+    update: {
+      organizationId: organization.id,
+      isActive: true,
+      role: 'org_admin',
+      passwordHash: organizationAdminPassword,
+    },
+    create: {
+      organizationId: organization.id,
+      email: 'eammanagementllc@gmail.com',
+      passwordHash: organizationAdminPassword,
+      role: 'org_admin',
+      firstName: 'EA Management',
       lastName: 'Admin',
     },
   });

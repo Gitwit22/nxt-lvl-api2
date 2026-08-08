@@ -1,43 +1,42 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, Scope, UnauthorizedException } from '@nestjs/common';
+import { REQUEST } from '@nestjs/core';
 import { LoginUseCase, defaultAuthConfig } from '@nxtlvl/auth-core';
 import type { LoginCredentials } from '@nxtlvl/auth-core';
+import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 import { PrismaService } from '../../prisma/prisma.service';
-import programPartition from '../../config/program.partition.json';
 import { PrismaAuthRepository } from './infrastructure/prisma-auth-repository';
 import { BcryptPasswordHasher } from './infrastructure/bcrypt-password-hasher';
 import { JwtTokenService } from './infrastructure/jwt-token-service';
 import { ConsoleAuditLogger } from './infrastructure/console-audit-logger';
 import { LoginDto } from './dto/login.dto';
 
-@Injectable()
+@Injectable({ scope: Scope.REQUEST })
 export class AuthService {
-  private readonly loginUseCase: LoginUseCase;
-
   constructor(
+    @Inject(REQUEST) private readonly request: PartitionRequest,
     private readonly prisma: PrismaService,
     private readonly authRepository: PrismaAuthRepository,
     private readonly passwordHasher: BcryptPasswordHasher,
-    private readonly tokenService: JwtTokenService,
     private readonly auditLogger: ConsoleAuditLogger,
-  ) {
-    this.loginUseCase = new LoginUseCase({
+  ) {}
+
+  async login(dto: LoginDto) {
+    const tokenService = new JwtTokenService(this.request.partition.authIssuer);
+    const loginUseCase = new LoginUseCase({
       authRepository: this.authRepository,
       passwordHasher: this.passwordHasher,
-      tokenService: this.tokenService,
+      tokenService,
       auditLogger: this.auditLogger,
       config: {
         ...defaultAuthConfig,
-        issuer: programPartition.authIssuer,
+        issuer: this.request.partition.authIssuer,
         allowLogin: true,
         requireVerifiedEmailForLogin: false,
         sessionTtlSeconds: 86400,
       },
     });
-  }
-
-  async login(dto: LoginDto) {
     const credentials: LoginCredentials = { email: dto.email, password: dto.password };
-    const result = await this.loginUseCase.execute(credentials);
+    const result = await loginUseCase.execute(credentials);
 
     if (!result.success) {
       throw new UnauthorizedException(result.error.message);

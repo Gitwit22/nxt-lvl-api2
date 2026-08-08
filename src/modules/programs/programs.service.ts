@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, Scope } from '@nestjs/common';
+import { REQUEST } from '@nestjs/core';
 import { Prisma, Program, ProgramStatus, ProgramType } from '@prisma/client';
+import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProgramDto } from './dto/create-program.dto';
 import { UpsertLaunchpadStateDto } from './dto/upsert-launchpad-state.dto';
-import programPartition from '../../config/program.partition.json';
 
 type LaunchpadState = {
   custom: unknown[];
@@ -15,9 +16,12 @@ const EMPTY_LAUNCHPAD_STATE: LaunchpadState = {
   hiddenIds: [],
 };
 
-@Injectable()
+@Injectable({ scope: Scope.REQUEST })
 export class ProgramsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(REQUEST) private readonly request: PartitionRequest,
+    private readonly prisma: PrismaService,
+  ) {}
 
   private normalizeLaunchpadState(value: unknown): LaunchpadState {
     if (!value || typeof value !== 'object') {
@@ -43,9 +47,10 @@ export class ProgramsService {
   }
 
   private async ensurePrimaryProgram() {
+    const partition = this.request.partition;
     const primary = await this.prisma.program.findFirst({
       where: {
-        slug: programPartition.primaryProgramSlug,
+        slug: partition.primaryProgramSlug,
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -57,8 +62,8 @@ export class ProgramsService {
     const organization = await this.prisma.organization.findFirst({
       where: {
         OR: [
-          { slug: programPartition.organizationSlug },
-          { name: programPartition.organizationName },
+          { slug: partition.organizationSlug },
+          { name: partition.organizationName },
         ],
       },
       orderBy: { createdAt: 'asc' },
@@ -71,8 +76,8 @@ export class ProgramsService {
     return this.prisma.program.create({
       data: {
         organizationId: organization.id,
-        name: programPartition.primaryProgramName,
-        slug: programPartition.primaryProgramSlug,
+        name: partition.primaryProgramName,
+        slug: partition.primaryProgramSlug,
         type: ProgramType.business_directory,
         status: ProgramStatus.active,
         settings: {
@@ -102,9 +107,10 @@ export class ProgramsService {
   }
 
   async getLaunchpadState(): Promise<LaunchpadState> {
+    const partition = this.request.partition;
     const primary = await this.prisma.program.findFirst({
       where: {
-        slug: programPartition.primaryProgramSlug,
+        slug: partition.primaryProgramSlug,
       },
       orderBy: { createdAt: 'asc' },
       select: {
