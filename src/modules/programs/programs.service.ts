@@ -4,6 +4,7 @@ import { Prisma, Program, ProgramStatus, ProgramType } from '@prisma/client';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProgramDto } from './dto/create-program.dto';
+import { UpdateProgramDto } from './dto/update-program.dto';
 import { UpsertLaunchpadStateDto } from './dto/upsert-launchpad-state.dto';
 
 type LaunchpadState = {
@@ -102,6 +103,19 @@ export class ProgramsService {
         type: dto.type,
         status: dto.status,
         settings: dto.settings as Prisma.InputJsonValue | undefined,
+      },
+    });
+  }
+
+  async updateProgram(programId: string, dto: UpdateProgramDto): Promise<Program> {
+    const program = await this.prisma.program.findUnique({ where: { id: programId } });
+    if (!program) throw new NotFoundException('Program not found.');
+    return this.prisma.program.update({
+      where: { id: programId },
+      data: {
+        ...(dto.name ? { name: dto.name } : {}),
+        ...(dto.status ? { status: dto.status } : {}),
+        ...(dto.settings ? { settings: dto.settings as Prisma.InputJsonValue } : {}),
       },
     });
   }

@@ -1,7 +1,8 @@
-﻿import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+﻿import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
 import { ProgramsService } from './programs.service';
 import { CreateProgramDto } from './dto/create-program.dto';
+import { UpdateProgramDto } from './dto/update-program.dto';
 import { BusinessesService } from '../businesses/businesses.service';
 import { UpsertLaunchpadStateDto } from './dto/upsert-launchpad-state.dto';
 
@@ -31,6 +32,12 @@ export class ProgramsController {
   @Post()
   createProgram(@Body() dto: CreateProgramDto) {
     return this.programsService.createProgram(dto);
+  }
+
+  @UseGuards(AdminJwtGuard)
+  @Patch(':programId')
+  updateProgram(@Param('programId') programId: string, @Body() dto: UpdateProgramDto) {
+    return this.programsService.updateProgram(programId, dto);
   }
 
   @Get(':programSlug/businesses')

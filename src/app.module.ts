@@ -22,6 +22,7 @@ import { StudioCoreModule } from './modules/studio-core/studio-core.module';
 import { ClipMagicModule } from './modules/clip-magic/clip-magic.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { OrganizationsModule } from './modules/organizations/organizations.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { PrismaModule } from './prisma/prisma.module';
     NotificationsModule,
     AdminModule,
     AuditLogModule,
+    OrganizationsModule,
   ],
   providers: [
     {

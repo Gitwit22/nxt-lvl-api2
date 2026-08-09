@@ -18,10 +18,13 @@ export class AdminJwtGuard implements CanActivate {
       const tokenService = new JwtTokenService(request.partition.authIssuer);
       const payload = await tokenService.verify(token);
       request.headers['x-admin-id'] = payload.sub;
+      request.headers['x-admin-email'] = payload.email;
+      request.headers['x-admin-roles'] = (payload.roles ?? []).join(',');
       return true;
     } catch {
       throw new UnauthorizedException('Invalid or expired token.');
     }
   }
 }
+
 

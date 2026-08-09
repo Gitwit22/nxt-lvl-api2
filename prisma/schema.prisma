@@ -310,8 +310,22 @@ model AdminUser {
   reviewedChangeRequests   BusinessChangeRequest[] @relation("ChangeRequestReviewedBy")
   uploadedFiles            FileAsset[]
   auditLogs                AuditLog[]
+  invitation               AdminInvitation?
 
   @@index([organizationId, role])
+}
+
+model AdminInvitation {
+  id          String    @id @default(cuid())
+  adminUserId String    @unique
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
 }
 
 model CinemaStudioState {

@@ -159,4 +159,49 @@ export class NotificationsService {
         : `Your update request for ${options.businessName} was reviewed but not approved. You can submit updated changes any time.`,
     });
   }
+
+  async sendInviteEmail(options: {
+    to: string;
+    firstName: string;
+    orgName: string;
+    role: string;
+    inviteUrl: string;
+  }): Promise<void> {
+    if (!this.useCase) return;
+    const partition = this.request.partition;
+    await this.useCase.execute({
+      to: options.to,
+      subject: `You've been invited to join ${options.orgName} on ${partition.appName}`,
+      html: `
+        <p>Hi ${options.firstName},</p>
+        <p>You have been invited to join <strong>${options.orgName}</strong> on ${partition.appName} as a <strong>${options.role}</strong>.</p>
+        <p>Click the button below to set up your account. This link expires in 72 hours.</p>
+        <p style="margin:24px 0;">
+          <a href="${options.inviteUrl}"
+             style="background:#C45A8A;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;">
+            Set up your account
+          </a>
+        </p>
+        <p style="color:#888;font-size:13px;">
+          Or copy this link into your browser:<br/>
+          <a href="${options.inviteUrl}" style="color:#C45A8A;">${options.inviteUrl}</a>
+        </p>
+        <p style="color:#aaa;font-size:12px;">
+          If you did not expect this invitation, you can safely ignore this email.
+        </p>
+        <p>— ${partition.appName}</p>
+      `,
+      text: [
+        `Hi ${options.firstName},`,
+        '',
+        `You have been invited to join ${options.orgName} on ${partition.appName} as a ${options.role}.`,
+        '',
+        `Set up your account here: ${options.inviteUrl}`,
+        '',
+        'This link expires in 72 hours.',
+        '',
+        `— ${partition.appName}`,
+      ].join('\n'),
+    });
+  }
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -16,5 +16,15 @@ export class AuthController {
   @UseGuards(AdminJwtGuard)
   logout() {
     return { message: 'Logged out.' };
+  }
+
+  @Get('validate-invite')
+  validateInvite(@Query('token') token: string) {
+    return this.authService.validateInvite(token);
+  }
+
+  @Post('accept-invite')
+  acceptInvite(@Body() body: { token: string; newPassword: string }) {
+    return this.authService.acceptInvite(body.token, body.newPassword);
   }
 }
