@@ -115,4 +115,25 @@ export class AdminController {
     }
     return { token, expiresAt };
   }
+
+  @Post('form-assignments/send-email')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async sendFormAssignmentEmail(
+    @Body() body: Record<string, unknown>,
+  ) {
+    const to = typeof body['to'] === 'string' ? body['to'].trim() : '';
+    const secureLink = typeof body['secureLink'] === 'string' ? body['secureLink'].trim() : '';
+    // Basic email format guard to prevent header injection
+    if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return;
+    if (!secureLink) return;
+    await this.notifications.sendFormLink({
+      to,
+      contactName: typeof body['contactName'] === 'string' ? body['contactName'] : 'there',
+      formName: typeof body['formName'] === 'string' ? body['formName'] : 'Form',
+      programName: typeof body['programName'] === 'string' ? body['programName'] : 'EA Management',
+      dueDate: typeof body['dueDate'] === 'string' ? body['dueDate'] : 'As soon as possible',
+      secureLink,
+      personalMessage: typeof body['personalMessage'] === 'string' ? body['personalMessage'] : undefined,
+    }).catch(() => undefined);
+  }
 }

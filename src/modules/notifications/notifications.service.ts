@@ -71,6 +71,63 @@ export class NotificationsService {
     });
   }
 
+  async sendFormLink(options: {
+    to: string;
+    contactName: string;
+    formName: string;
+    programName: string;
+    dueDate: string;
+    secureLink: string;
+    personalMessage?: string;
+  }): Promise<void> {
+    if (!this.useCase) return;
+    const partition = this.request.partition;
+    const personalBlock = options.personalMessage
+      ? `<p style="background:#f9f9f9;border-left:3px solid #C45A8A;padding:12px 16px;margin:16px 0;font-style:italic;">${options.personalMessage}</p>`
+      : '';
+    const textParts = [
+      `Hi ${options.contactName},`,
+      '',
+      `You have a form to complete as part of the ${options.programName} program.`,
+      ...(options.personalMessage ? ['', options.personalMessage] : []),
+      '',
+      `Form: ${options.formName}`,
+      `Due: ${options.dueDate}`,
+      '',
+      `Complete your form here: ${options.secureLink}`,
+      '',
+      `— ${partition.appName}`,
+    ];
+    await this.useCase.execute({
+      to: options.to,
+      subject: `Action required: ${options.formName}`,
+      html: `
+        <p>Hi ${options.contactName},</p>
+        <p>You have been sent a form as part of the <strong>${options.programName}</strong> program.</p>
+        ${personalBlock}
+        <p>
+          <strong>Form:</strong> ${options.formName}<br/>
+          <strong>Due:</strong> ${options.dueDate}
+        </p>
+        <p style="margin:24px 0;">
+          <a href="${options.secureLink}"
+             style="background:#C45A8A;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;">
+            Complete your form
+          </a>
+        </p>
+        <p style="color:#888;font-size:13px;">
+          Or copy this link into your browser:<br/>
+          <a href="${options.secureLink}" style="color:#C45A8A;">${options.secureLink}</a>
+        </p>
+        <p style="color:#aaa;font-size:12px;">
+          If you did not expect this email, you can safely ignore it.
+        </p>
+        <p>— ${partition.appName}</p>
+      `,
+      text: textParts.join('\n'),
+    });
+  }
+
   async sendUpdateRequestReviewed(options: {
     to: string;
     businessName: string;
@@ -82,8 +139,8 @@ export class NotificationsService {
     await this.useCase.execute({
       to: options.to,
       subject: approved
-        ? `Update approved ΓÇö ${options.businessName}`
-        : `Update not approved ΓÇö ${options.businessName}`,
+        ? `Update approved — ${options.businessName}`
+        : `Update not approved — ${options.businessName}`,
       html: approved
         ? `
           <p>Hi there,</p>
