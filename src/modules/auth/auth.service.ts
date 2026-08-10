@@ -3,6 +3,7 @@ import { REQUEST } from '@nestjs/core';
 import { LoginUseCase, defaultAuthConfig } from '@nxtlvl/auth-core';
 import type { LoginCredentials } from '@nxtlvl/auth-core';
 import { createHash, randomUUID } from 'crypto';
+import { sign } from 'jsonwebtoken';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PrismaAuthRepository } from './infrastructure/prisma-auth-repository';
@@ -43,13 +44,20 @@ export class AuthService {
       throw new UnauthorizedException(result.error.message);
     }
 
-    // Fetch org context not stored in JWT
+    // Fetch org context to embed in JWT
     const admin = await this.prisma.adminUser.findUnique({
       where: { id: result.user.id },
     });
 
+    const accessToken = this.signWithOrgId(
+      result.user.id,
+      result.user.email,
+      result.user.roles as string[],
+      admin?.organizationId,
+    );
+
     return {
-      accessToken: result.session.accessToken,
+      accessToken,
       admin: {
         id: result.user.id,
         email: result.user.email,
@@ -108,12 +116,12 @@ export class AuthService {
 
     const { adminUser } = invitation;
     const tokenService = new JwtTokenService(this.request.partition.authIssuer);
-    const accessToken = await tokenService.sign({
-      sub: adminUser.id,
-      email: adminUser.email,
-      roles: [adminUser.role],
-      sessionId: randomUUID(),
-    });
+    const accessToken = this.signWithOrgId(
+      adminUser.id,
+      adminUser.email,
+      [adminUser.role],
+      adminUser.organizationId,
+    );
 
     return {
       accessToken,
@@ -124,6 +132,21 @@ export class AuthService {
         organizationId: adminUser.organizationId,
       },
     };
+  }
+
+  private signWithOrgId(
+    sub: string,
+    email: string,
+    roles: string[],
+    organizationId?: string,
+  ): string {
+    const secret = process.env['JWT_SECRET'] ?? '';
+    const expiresIn = (process.env['JWT_EXPIRES_IN'] ?? '1d') as unknown as number;
+    return sign(
+      { email, roles, sessionId: randomUUID(), jti: randomUUID(), organizationId },
+      secret,
+      { subject: sub, expiresIn, issuer: this.request.partition.authIssuer },
+    );
   }
 }
 

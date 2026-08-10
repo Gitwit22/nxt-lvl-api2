@@ -372,3 +372,235 @@ model ClipMagicMusicFile {
   @@unique([workspaceId, trackId])
   @@index([workspaceId])
 }
+
+// ─── ClientFlow CRM Models ────────────────────────────────────────────────────
+
+model CfClient {
+  id                 String    @id @default(cuid())
+  organizationId     String
+  businessName       String
+  primaryContactName String
+  email              String
+  phone              String
+  website            String?
+  socialLinks        Json      @default("[]")
+  programId          String?
+  status             String    @default("New Intake")
+  profileType        String?
+  relationshipType   String?
+  lifecycleStatus    String?
+  assignedStaff      String
+  assignedUserId     String?
+  intakeSource       String    @default("admin_created")
+  source             String?
+  nextFollowUpDate   DateTime?
+  convertedAt        DateTime?
+  isDemo             Boolean   @default(false)
+  isArchived         Boolean   @default(false)
+  archiveReason      String?
+  finalStatus        String?
+  archivedAt         DateTime?
+  intake             Json
+  snapchat           Json?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, isArchived])
+}
+
+model CfProgram {
+  id                         String   @id @default(cuid())
+  organizationId             String
+  name                       String
+  description                String
+  isActive                   Boolean  @default(true)
+  defaultFormTemplateId      String
+  defaultMonitoringFrequency String
+  defaultContractTemplateId  String
+  defaultWorkflow            Json     @default("[]")
+  requiredDocuments          Json     @default("[]")
+  statusPipeline             Json     @default("[]")
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
+model CfFormTemplate {
+  id            String   @id @default(cuid())
+  organizationId String
+  programId     String
+  name          String
+  description   String
+  fields        Json     @default("[]")
+  emailTemplate String   @db.Text
+  internalNotes String?
+  dueInDays     Int      @default(7)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
+model CfFormAssignment {
+  id               String    @id @default(cuid())
+  organizationId   String
+  clientId         String
+  formId           String
+  assignedUserId   String?
+  completionMethod String?
+  deliveryMethod   String?
+  recipientEmail   String?
+  recipientPhone   String?
+  status           String    @default("draft")
+  dueAt            DateTime?
+  sentAt           DateTime?
+  openedAt         DateTime?
+  startedAt        DateTime?
+  submittedAt      DateTime?
+  cancelledAt      DateTime?
+  dueDate          String?
+  secureLink       String?
+  responses        Json?
+  editHistory      Json?
+  createdByUserId  String?
+  isDemo           Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, clientId])
+}
+
+model CfTerms {
+  id                   String   @id @default(cuid())
+  organizationId       String
+  clientId             String
+  programId            String
+  supportType          String
+  fundingAmount        Float    @default(0)
+  resourceDescription  String
+  grantAmount          Float    @default(0)
+  loanAmount           Float    @default(0)
+  investmentAmount     Float    @default(0)
+  forgivableAmount     Float    @default(0)
+  repaymentRequired    Boolean  @default(false)
+  repaymentSchedule    String
+  interestDescription  String
+  milestones           String
+  reportingRequirements String
+  startDate            String
+  endDate              String
+  monitoringFrequency  String
+  specialConditions    String
+  approvalStatus       String   @default("Pending")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([organizationId, clientId])
+}
+
+model CfMonitoringItem {
+  id             String    @id @default(cuid())
+  organizationId String
+  clientId       String
+  programId      String
+  type           String
+  dueDate        DateTime
+  status         String    @default("Scheduled")
+  assignedStaff  String
+  notes          String    @default("")
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, clientId])
+}
+
+model CfContract {
+  id             String    @id @default(cuid())
+  organizationId String
+  clientId       String
+  programId      String
+  termsId        String?
+  contractType   String
+  status         String    @default("Draft")
+  content        String    @db.Text
+  sentAt         DateTime?
+  signedAt       DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, clientId])
+}
+
+model CfDocument {
+  id             String   @id @default(cuid())
+  organizationId String
+  clientId       String
+  name           String
+  type           String
+  url            String
+  uploadedAt     DateTime @default(now())
+  uploadedBy     String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId, clientId])
+}
+
+model CfCommunication {
+  id             String   @id @default(cuid())
+  organizationId String
+  clientId       String
+  type           String
+  direction      String
+  subject        String
+  notes          String   @default("")
+  date           DateTime
+  staffMember    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId, clientId])
+}
+
+model CfFinalReport {
+  id                    String   @id @default(cuid())
+  organizationId        String
+  clientId              String
+  programId             String
+  startDate             String
+  endDate               String
+  originalNeed          String
+  supportProvided       String
+  fundingProvided       String
+  milestonesCompleted   String
+  resultsAchieved       String
+  issuesEncountered     String
+  staffComments         String
+  clientOutcome         String
+  recommendedNextSteps  String
+  archiveDecision       String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([organizationId, clientId])
+}
+
+model CfActivityLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  clientId       String
+  action         String
+  description    String
+  user           String
+  timestamp      DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([organizationId, clientId])
+}
