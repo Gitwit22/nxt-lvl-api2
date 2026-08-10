@@ -11,6 +11,7 @@ export class CreateCfFormAssignmentDto {
   @IsOptional() @IsString() status?: string;
   @IsOptional() @IsString() dueDate?: string;
   @IsOptional() @IsString() secureLink?: string;
+  @IsOptional() @IsString() secureLinkToken?: string;
   @IsOptional() @IsString() createdByUserId?: string;
   @IsOptional() @IsBoolean() isDemo?: boolean;
   @IsOptional() @IsString() sentAt?: string;

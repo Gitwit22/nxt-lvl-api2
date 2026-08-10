@@ -463,6 +463,7 @@ model CfFormAssignment {
   cancelledAt      DateTime?
   dueDate          String?
   secureLink       String?
+  secureLinkToken  String?   @unique
   responses        Json?
   editHistory      Json?
   createdByUserId  String?

@@ -205,6 +205,7 @@ export class ClientflowService {
         status: dto.status ?? 'draft',
         dueDate: dto.dueDate,
         secureLink: dto.secureLink,
+        secureLinkToken: dto.secureLinkToken,
         createdByUserId: dto.createdByUserId,
         isDemo: dto.isDemo ?? false,
         sentAt: dto.sentAt ? new Date(dto.sentAt) : null,
