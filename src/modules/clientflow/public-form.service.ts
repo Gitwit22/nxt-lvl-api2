@@ -102,7 +102,14 @@ export class PublicFormService {
       }),
     ]);
 
-    if (!template || !client) throw new NotFoundException('Form configuration not found.');
+    if (!template) throw new NotFoundException('Form configuration not found.');
+
+    // client may be null when the sender was created via the frontend quick-create
+    // flow and not yet synced to the DB. Fall back gracefully instead of 404.
+    const contactName =
+      client?.primaryContactName ??
+      assignment.recipientEmail ??
+      'Client';
 
     // Auto-mark as opened if it was sent/delivered
     if (assignment.status === 'sent' || assignment.status === 'delivered') {
@@ -113,14 +120,16 @@ export class PublicFormService {
     }
 
     const fields = (Array.isArray(template.fields) ? template.fields : []) as unknown as FormFieldShape[];
-    const prefill = resolvePrefill(fields, {
-      email: client.email,
-      phone: client.phone,
-      businessName: client.businessName,
-      primaryContactName: client.primaryContactName,
-      website: client.website,
-      intake: (client.intake ?? {}) as ClientIntake,
-    });
+    const prefill = client
+      ? resolvePrefill(fields, {
+          email: client.email,
+          phone: client.phone,
+          businessName: client.businessName,
+          primaryContactName: client.primaryContactName,
+          website: client.website,
+          intake: (client.intake ?? {}) as ClientIntake,
+        })
+      : {};
 
     return {
       assignment: {
@@ -144,7 +153,7 @@ export class PublicFormService {
         name: program?.name ?? 'EA Management Program',
       },
       contact: {
-        name: client.primaryContactName,
+        name: contactName,
       },
       prefill,
     };

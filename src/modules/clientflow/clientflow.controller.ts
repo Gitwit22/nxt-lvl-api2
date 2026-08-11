@@ -52,6 +52,12 @@ export class ClientflowController {
   @Get('form-templates')
   listFormTemplates() { return this.svc.listFormTemplates(); }
 
+  @Post('form-templates')
+  createFormTemplate(@Body() dto: Record<string, unknown>) { return this.svc.createFormTemplate(dto); }
+
+  @Patch('form-templates/:id')
+  updateFormTemplate(@Param('id') id: string, @Body() dto: Record<string, unknown>) { return this.svc.updateFormTemplate(id, dto); }
+
   // ─── Form Assignments ────────────────────────────────────────────────────────
 
   @Get('form-assignments')

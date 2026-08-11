@@ -180,6 +180,42 @@ export class ClientflowService {
     return this.prisma.cfFormTemplate.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'asc' } });
   }
 
+  async createFormTemplate(dto: Record<string, unknown>) {
+    const orgId = await this.getOrgId();
+    return this.prisma.cfFormTemplate.create({
+      data: {
+        organizationId: orgId,
+        programId: String(dto['programId'] ?? ''),
+        name: String(dto['name'] ?? ''),
+        description: String(dto['description'] ?? ''),
+        fields: (dto['fields'] ?? []) as Prisma.InputJsonValue,
+        emailTemplate: String(dto['emailTemplate'] ?? 'default'),
+        internalNotes: dto['internalNotes'] ? String(dto['internalNotes']) : null,
+        dueInDays: Number(dto['dueInDays'] ?? 7),
+        isActive: dto['isActive'] !== false,
+      },
+    });
+  }
+
+  async updateFormTemplate(id: string, dto: Record<string, unknown>) {
+    const orgId = await this.getOrgId();
+    const existing = await this.prisma.cfFormTemplate.findFirst({ where: { id, organizationId: orgId } });
+    if (!existing) throw new NotFoundException('Form template not found.');
+    return this.prisma.cfFormTemplate.update({
+      where: { id },
+      data: {
+        ...(dto['programId'] !== undefined && { programId: String(dto['programId']) }),
+        ...(dto['name'] !== undefined && { name: String(dto['name']) }),
+        ...(dto['description'] !== undefined && { description: String(dto['description']) }),
+        ...(dto['fields'] !== undefined && { fields: dto['fields'] as Prisma.InputJsonValue }),
+        ...(dto['emailTemplate'] !== undefined && { emailTemplate: String(dto['emailTemplate']) }),
+        ...(dto['internalNotes'] !== undefined && { internalNotes: dto['internalNotes'] ? String(dto['internalNotes']) : null }),
+        ...(dto['dueInDays'] !== undefined && { dueInDays: Number(dto['dueInDays']) }),
+        ...(dto['isActive'] !== undefined && { isActive: Boolean(dto['isActive']) }),
+      },
+    });
+  }
+
   // ─── Form Assignments ────────────────────────────────────────────────────────
 
   async listFormAssignments(clientId?: string) {
