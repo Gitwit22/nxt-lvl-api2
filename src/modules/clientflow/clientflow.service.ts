@@ -139,6 +139,7 @@ export class ClientflowService {
     const orgId = await this.getOrgId();
     return this.prisma.cfProgram.create({
       data: {
+        ...(dto.id && { id: dto.id }),
         organizationId: orgId,
         name: dto.name,
         description: dto.description,
@@ -184,6 +185,7 @@ export class ClientflowService {
     const orgId = await this.getOrgId();
     return this.prisma.cfFormTemplate.create({
       data: {
+        ...(dto['id'] && { id: String(dto['id']) }),
         organizationId: orgId,
         programId: String(dto['programId'] ?? ''),
         name: String(dto['name'] ?? ''),

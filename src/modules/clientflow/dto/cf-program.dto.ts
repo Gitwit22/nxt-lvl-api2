@@ -1,6 +1,7 @@
 import { IsString, IsOptional, IsBoolean, IsArray } from 'class-validator';
 
 export class CreateCfProgramDto {
+  @IsOptional() @IsString() id?: string;
   @IsString() name!: string;
   @IsString() description!: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
