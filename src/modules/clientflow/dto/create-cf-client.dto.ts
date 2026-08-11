@@ -1,9 +1,9 @@
-import { IsString, IsOptional, IsBoolean, IsObject } from 'class-validator';
+import { IsEmail, IsString, IsOptional, IsBoolean, IsObject } from 'class-validator';
 
 export class CreateCfClientDto {
   @IsString() businessName!: string;
   @IsString() primaryContactName!: string;
-  @IsString() email!: string;
+  @IsEmail() email!: string;
   @IsString() phone!: string;
   @IsOptional() @IsString() website?: string;
   @IsOptional() programId?: string | null;

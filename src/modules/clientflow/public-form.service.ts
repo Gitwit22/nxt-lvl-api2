@@ -184,18 +184,27 @@ export class PublicFormService {
       },
     });
 
-    const program = await this.prisma.cfProgram.findFirst({
-      where: {
-        organizationId: assignment.organizationId,
-        defaultFormTemplateId: assignment.formId,
-      },
-    });
+    const [program, existingClient] = await Promise.all([
+      this.prisma.cfProgram.findFirst({
+        where: {
+          organizationId: assignment.organizationId,
+          defaultFormTemplateId: assignment.formId,
+        },
+      }),
+      this.prisma.cfClient.findFirst({
+        where: { id: assignment.clientId },
+        select: { status: true },
+      }),
+    ]);
 
+    const EARLY_STAGE_STATUSES = new Set(['New Intake', 'Screening', 'Applied']);
     await this.prisma.cfClient.update({
       where: { id: assignment.clientId },
       data: {
         ...(program ? { programId: program.id } : {}),
-        status: 'Qualified',
+        ...(existingClient && EARLY_STAGE_STATUSES.has(existingClient.status)
+          ? { status: 'Qualified' }
+          : {}),
       },
     });
 
