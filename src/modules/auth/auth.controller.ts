@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
 import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -16,6 +17,19 @@ export class AuthController {
   @UseGuards(AdminJwtGuard)
   logout() {
     return { message: 'Logged out.' };
+  }
+
+  @Get('me')
+  @UseGuards(AdminJwtGuard)
+  getMe(@Req() req: Request) {
+    const adminId = req.headers['x-admin-id'] as string;
+    return this.authService.getMe(adminId);
+  }
+
+  @Get('session')
+  @UseGuards(AdminJwtGuard)
+  getSession() {
+    return { valid: true };
   }
 
   @Get('validate-invite')

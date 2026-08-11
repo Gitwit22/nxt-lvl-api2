@@ -1,6 +1,7 @@
 import { Inject, Injectable, NotFoundException, Scope } from '@nestjs/common';
 import { REQUEST } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
+import { randomBytes } from 'crypto';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCfClientDto } from './dto/create-cf-client.dto';
@@ -11,6 +12,7 @@ import { CreateCfTermsDto, UpdateCfTermsDto } from './dto/cf-terms.dto';
 import { CreateCfMonitoringDto, UpdateCfMonitoringDto } from './dto/cf-monitoring.dto';
 import { CreateCfContractDto, UpdateCfContractDto } from './dto/cf-contract.dto';
 import { CreateCfDocumentDto, CreateCfCommunicationDto, CreateCfFinalReportDto, CreateCfActivityDto } from './dto/cf-records.dto';
+import { CreateCfFormTemplateDto, UpdateCfFormTemplateDto } from './dto/cf-form-template.dto';
 
 @Injectable({ scope: Scope.REQUEST })
 export class ClientflowService {
@@ -42,12 +44,17 @@ export class ClientflowService {
     return admin.organizationId;
   }
 
+  private async verifyClientBelongsToOrg(clientId: string, orgId: string): Promise<void> {
+    const client = await this.prisma.cfClient.findFirst({ where: { id: clientId, organizationId: orgId } });
+    if (!client) throw new NotFoundException('Client not found.');
+  }
+
   // ─── Clients ────────────────────────────────────────────────────────────────
 
-  async listClients() {
+  async listClients(includeArchived = false) {
     const orgId = await this.getOrgId();
     return this.prisma.cfClient.findMany({
-      where: { organizationId: orgId },
+      where: { organizationId: orgId, ...(includeArchived ? {} : { isArchived: false }) },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -181,39 +188,39 @@ export class ClientflowService {
     return this.prisma.cfFormTemplate.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'asc' } });
   }
 
-  async createFormTemplate(dto: Record<string, unknown>) {
+  async createFormTemplate(dto: CreateCfFormTemplateDto) {
     const orgId = await this.getOrgId();
     return this.prisma.cfFormTemplate.create({
       data: {
-        ...(dto['id'] && { id: String(dto['id']) }),
+        ...(dto.id && { id: dto.id }),
         organizationId: orgId,
-        programId: String(dto['programId'] ?? ''),
-        name: String(dto['name'] ?? ''),
-        description: String(dto['description'] ?? ''),
-        fields: (dto['fields'] ?? []) as Prisma.InputJsonValue,
-        emailTemplate: String(dto['emailTemplate'] ?? 'default'),
-        internalNotes: dto['internalNotes'] ? String(dto['internalNotes']) : null,
-        dueInDays: Number(dto['dueInDays'] ?? 7),
-        isActive: dto['isActive'] !== false,
+        programId: dto.programId,
+        name: dto.name,
+        description: dto.description ?? '',
+        fields: (dto.fields ?? []) as Prisma.InputJsonValue,
+        emailTemplate: dto.emailTemplate ?? 'default',
+        internalNotes: dto.internalNotes ?? null,
+        dueInDays: dto.dueInDays ?? 7,
+        isActive: dto.isActive ?? true,
       },
     });
   }
 
-  async updateFormTemplate(id: string, dto: Record<string, unknown>) {
+  async updateFormTemplate(id: string, dto: UpdateCfFormTemplateDto) {
     const orgId = await this.getOrgId();
     const existing = await this.prisma.cfFormTemplate.findFirst({ where: { id, organizationId: orgId } });
     if (!existing) throw new NotFoundException('Form template not found.');
     return this.prisma.cfFormTemplate.update({
       where: { id },
       data: {
-        ...(dto['programId'] !== undefined && { programId: String(dto['programId']) }),
-        ...(dto['name'] !== undefined && { name: String(dto['name']) }),
-        ...(dto['description'] !== undefined && { description: String(dto['description']) }),
-        ...(dto['fields'] !== undefined && { fields: dto['fields'] as Prisma.InputJsonValue }),
-        ...(dto['emailTemplate'] !== undefined && { emailTemplate: String(dto['emailTemplate']) }),
-        ...(dto['internalNotes'] !== undefined && { internalNotes: dto['internalNotes'] ? String(dto['internalNotes']) : null }),
-        ...(dto['dueInDays'] !== undefined && { dueInDays: Number(dto['dueInDays']) }),
-        ...(dto['isActive'] !== undefined && { isActive: Boolean(dto['isActive']) }),
+        ...(dto.programId !== undefined && { programId: dto.programId }),
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.description !== undefined && { description: dto.description }),
+        ...(dto.fields !== undefined && { fields: dto.fields as Prisma.InputJsonValue }),
+        ...(dto.emailTemplate !== undefined && { emailTemplate: dto.emailTemplate }),
+        ...(dto.internalNotes !== undefined && { internalNotes: dto.internalNotes }),
+        ...(dto.dueInDays !== undefined && { dueInDays: dto.dueInDays }),
+        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       },
     });
   }
@@ -230,6 +237,8 @@ export class ClientflowService {
 
   async createFormAssignment(dto: CreateCfFormAssignmentDto) {
     const orgId = await this.getOrgId();
+    const token = randomBytes(32).toString('hex');
+    const secureLink = `${this.request.partition.appUrl}/forms/${token}`;
     return this.prisma.cfFormAssignment.create({
       data: {
         organizationId: orgId,
@@ -242,8 +251,8 @@ export class ClientflowService {
         recipientPhone: dto.recipientPhone ?? null,
         status: dto.status ?? 'draft',
         dueDate: dto.dueDate,
-        secureLink: dto.secureLink,
-        secureLinkToken: dto.secureLinkToken,
+        secureLink,
+        secureLinkToken: token,
         createdByUserId: dto.createdByUserId,
         isDemo: dto.isDemo ?? false,
         sentAt: dto.sentAt ? new Date(dto.sentAt) : null,
@@ -270,6 +279,38 @@ export class ClientflowService {
     });
   }
 
+  // ─── Global org-wide lists ─────────────────────────────────────────────────
+
+  async listAllTerms() {
+    const orgId = await this.getOrgId();
+    return this.prisma.cfTerms.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'desc' } });
+  }
+
+  async listAllMonitoring() {
+    const orgId = await this.getOrgId();
+    return this.prisma.cfMonitoringItem.findMany({ where: { organizationId: orgId }, orderBy: { dueDate: 'asc' } });
+  }
+
+  async listAllContracts() {
+    const orgId = await this.getOrgId();
+    return this.prisma.cfContract.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'desc' } });
+  }
+
+  async listAllDocuments() {
+    const orgId = await this.getOrgId();
+    return this.prisma.cfDocument.findMany({ where: { organizationId: orgId }, orderBy: { uploadedAt: 'desc' } });
+  }
+
+  async listAllCommunications() {
+    const orgId = await this.getOrgId();
+    return this.prisma.cfCommunication.findMany({ where: { organizationId: orgId }, orderBy: { date: 'desc' } });
+  }
+
+  async listAllFinalReports() {
+    const orgId = await this.getOrgId();
+    return this.prisma.cfFinalReport.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'desc' } });
+  }
+
   // ─── Terms ──────────────────────────────────────────────────────────────────
 
   async listTerms(clientId: string) {
@@ -279,6 +320,7 @@ export class ClientflowService {
 
   async createTerms(clientId: string, dto: CreateCfTermsDto) {
     const orgId = await this.getOrgId();
+    await this.verifyClientBelongsToOrg(clientId, orgId);
     return this.prisma.cfTerms.create({
       data: {
         organizationId: orgId,
@@ -324,6 +366,7 @@ export class ClientflowService {
 
   async createMonitoringItem(clientId: string, dto: CreateCfMonitoringDto) {
     const orgId = await this.getOrgId();
+    await this.verifyClientBelongsToOrg(clientId, orgId);
     return this.prisma.cfMonitoringItem.create({
       data: {
         organizationId: orgId,
@@ -362,6 +405,7 @@ export class ClientflowService {
 
   async createContract(clientId: string, dto: CreateCfContractDto) {
     const orgId = await this.getOrgId();
+    await this.verifyClientBelongsToOrg(clientId, orgId);
     return this.prisma.cfContract.create({
       data: {
         organizationId: orgId,
@@ -399,6 +443,7 @@ export class ClientflowService {
 
   async createDocument(clientId: string, dto: CreateCfDocumentDto) {
     const orgId = await this.getOrgId();
+    await this.verifyClientBelongsToOrg(clientId, orgId);
     return this.prisma.cfDocument.create({
       data: {
         organizationId: orgId,
@@ -421,6 +466,7 @@ export class ClientflowService {
 
   async createCommunication(clientId: string, dto: CreateCfCommunicationDto) {
     const orgId = await this.getOrgId();
+    await this.verifyClientBelongsToOrg(clientId, orgId);
     return this.prisma.cfCommunication.create({
       data: {
         organizationId: orgId,
@@ -444,6 +490,7 @@ export class ClientflowService {
 
   async createFinalReport(clientId: string, dto: CreateCfFinalReportDto) {
     const orgId = await this.getOrgId();
+    await this.verifyClientBelongsToOrg(clientId, orgId);
     return this.prisma.cfFinalReport.create({
       data: {
         organizationId: orgId,
@@ -508,6 +555,11 @@ export class ClientflowService {
     const orgId = await this.getOrgId();
 
     const results: Record<string, number> = {};
+    const errors: Array<{ id: string; entity: string; error: string }> = [];
+    const logError = (entity: string, id: unknown) => (err: unknown): null => {
+      errors.push({ id: String(id), entity, error: err instanceof Error ? err.message : String(err) });
+      return null;
+    };
 
     if (payload.programs?.length) {
       await Promise.all(
@@ -516,7 +568,7 @@ export class ClientflowService {
             where: { id: p['id'] as string },
             create: { ...(p as any), organizationId: orgId } as any,
             update: {},
-          }).catch(() => null),
+          }).catch(logError('program', p['id'])),
         ),
       );
       results.programs = payload.programs.length;
@@ -529,7 +581,7 @@ export class ClientflowService {
             where: { id: t['id'] as string },
             create: { ...(t as any), organizationId: orgId, fields: (t['fields'] ?? []) as Prisma.InputJsonValue, emailTemplate: (t['emailTemplate'] as string) ?? '' } as any,
             update: {},
-          }).catch(() => null),
+          }).catch(logError('formTemplate', t['id'])),
         ),
       );
       results.formTemplates = payload.formTemplates.length;
@@ -542,7 +594,7 @@ export class ClientflowService {
             where: { id: c['id'] as string },
             create: { ...(c as any), organizationId: orgId, intake: (c['intake'] ?? {}) as Prisma.InputJsonValue, snapchat: c['snapchat'] ? (c['snapchat'] as Prisma.InputJsonValue) : Prisma.JsonNull, socialLinks: (c['socialLinks'] ?? []) as Prisma.InputJsonValue, nextFollowUpDate: c['nextFollowUpDate'] ? new Date(c['nextFollowUpDate'] as string) : null, convertedAt: c['convertedAt'] ? new Date(c['convertedAt'] as string) : null, archivedAt: c['archivedAt'] ? new Date(c['archivedAt'] as string) : null } as any,
             update: {},
-          }).catch(() => null),
+          }).catch(logError('client', c['id'])),
         ),
       );
       results.clients = payload.clients.length;
@@ -555,7 +607,7 @@ export class ClientflowService {
             where: { id: a['id'] as string },
             create: { ...(a as any), organizationId: orgId, responses: a['responses'] ? (a['responses'] as Prisma.InputJsonValue) : Prisma.JsonNull, editHistory: a['editHistory'] ? (a['editHistory'] as Prisma.InputJsonValue) : Prisma.JsonNull, sentAt: a['sentAt'] ? new Date(a['sentAt'] as string) : null, openedAt: a['openedAt'] ? new Date(a['openedAt'] as string) : null, submittedAt: a['submittedAt'] ? new Date(a['submittedAt'] as string) : null, cancelledAt: a['cancelledAt'] ? new Date(a['cancelledAt'] as string) : null, startedAt: a['startedAt'] ? new Date(a['startedAt'] as string) : null, dueAt: a['dueAt'] ? new Date(a['dueAt'] as string) : null } as any,
             update: {},
-          }).catch(() => null),
+          }).catch(logError('formAssignment', a['id'])),
         ),
       );
       results.formAssignments = payload.formAssignments.length;
@@ -568,7 +620,7 @@ export class ClientflowService {
             where: { id: t['id'] as string },
             create: { ...(t as any), organizationId: orgId } as any,
             update: {},
-          }).catch(() => null),
+          }).catch(logError('terms', t['id'])),
         ),
       );
       results.terms = payload.terms.length;
@@ -581,7 +633,7 @@ export class ClientflowService {
             where: { id: m['id'] as string },
             create: { ...(m as any), organizationId: orgId, dueDate: new Date(m['dueDate'] as string), completedAt: m['completedAt'] ? new Date(m['completedAt'] as string) : null } as any,
             update: {},
-          }).catch(() => null),
+          }).catch(logError('monitoring', m['id'])),
         ),
       );
       results.monitoring = payload.monitoring.length;
@@ -594,7 +646,7 @@ export class ClientflowService {
             where: { id: c['id'] as string },
             create: { ...(c as any), organizationId: orgId, sentAt: c['sentAt'] ? new Date(c['sentAt'] as string) : null, signedAt: c['signedAt'] ? new Date(c['signedAt'] as string) : null } as any,
             update: {},
-          }).catch(() => null),
+          }).catch(logError('contract', c['id'])),
         ),
       );
       results.contracts = payload.contracts.length;
@@ -607,7 +659,7 @@ export class ClientflowService {
             where: { id: d['id'] as string },
             create: { ...(d as any), organizationId: orgId, uploadedAt: d['uploadedAt'] ? new Date(d['uploadedAt'] as string) : new Date() } as any,
             update: {},
-          }).catch(() => null),
+          }).catch(logError('document', d['id'])),
         ),
       );
       results.documents = payload.documents.length;
@@ -620,7 +672,7 @@ export class ClientflowService {
             where: { id: c['id'] as string },
             create: { ...(c as any), organizationId: orgId, date: new Date(c['date'] as string) } as any,
             update: {},
-          }).catch(() => null),
+          }).catch(logError('communication', c['id'])),
         ),
       );
       results.communications = payload.communications.length;
@@ -633,7 +685,7 @@ export class ClientflowService {
             where: { id: f['id'] as string },
             create: { ...(f as any), organizationId: orgId } as any,
             update: {},
-          }).catch(() => null),
+          }).catch(logError('finalReport', f['id'])),
         ),
       );
       results.finalReports = payload.finalReports.length;
@@ -646,13 +698,13 @@ export class ClientflowService {
             where: { id: a['id'] as string },
             create: { ...(a as any), organizationId: orgId, timestamp: a['timestamp'] ? new Date(a['timestamp'] as string) : new Date() } as any,
             update: {},
-          }).catch(() => null),
+          }).catch(logError('activity', a['id'])),
         ),
       );
       results.activity = payload.activity.length;
     }
 
-    return { seeded: results };
+    return { seeded: results, errors };
   }
 
   // ─── Demo Remove ────────────────────────────────────────────────────────────

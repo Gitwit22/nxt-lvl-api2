@@ -7,6 +7,7 @@ import { CreateCfClientDto } from './dto/create-cf-client.dto';
 import { UpdateCfClientDto } from './dto/update-cf-client.dto';
 import { CreateCfProgramDto, UpdateCfProgramDto } from './dto/cf-program.dto';
 import { CreateCfFormAssignmentDto, UpdateCfFormAssignmentDto } from './dto/cf-form-assignment.dto';
+import { CreateCfFormTemplateDto, UpdateCfFormTemplateDto } from './dto/cf-form-template.dto';
 import { CreateCfTermsDto, UpdateCfTermsDto } from './dto/cf-terms.dto';
 import { CreateCfMonitoringDto, UpdateCfMonitoringDto } from './dto/cf-monitoring.dto';
 import { CreateCfContractDto, UpdateCfContractDto } from './dto/cf-contract.dto';
@@ -25,7 +26,9 @@ export class ClientflowController {
   // ─── Clients ────────────────────────────────────────────────────────────────
 
   @Get('clients')
-  listClients() { return this.svc.listClients(); }
+  listClients(@Query('includeArchived') includeArchived?: string) {
+    return this.svc.listClients(includeArchived === 'true');
+  }
 
   @Get('clients/:id')
   getClient(@Param('id') id: string) { return this.svc.getClient(id); }
@@ -53,10 +56,10 @@ export class ClientflowController {
   listFormTemplates() { return this.svc.listFormTemplates(); }
 
   @Post('form-templates')
-  createFormTemplate(@Body() dto: Record<string, unknown>) { return this.svc.createFormTemplate(dto); }
+  createFormTemplate(@Body() dto: CreateCfFormTemplateDto) { return this.svc.createFormTemplate(dto); }
 
   @Patch('form-templates/:id')
-  updateFormTemplate(@Param('id') id: string, @Body() dto: Record<string, unknown>) { return this.svc.updateFormTemplate(id, dto); }
+  updateFormTemplate(@Param('id') id: string, @Body() dto: UpdateCfFormTemplateDto) { return this.svc.updateFormTemplate(id, dto); }
 
   // ─── Form Assignments ────────────────────────────────────────────────────────
 
@@ -68,6 +71,26 @@ export class ClientflowController {
 
   @Patch('form-assignments/:id')
   updateFormAssignment(@Param('id') id: string, @Body() dto: UpdateCfFormAssignmentDto) { return this.svc.updateFormAssignment(id, dto); }
+
+  // ─── Global lists (all records for org) ────────────────────────────────────
+
+  @Get('terms')
+  listAllTerms() { return this.svc.listAllTerms(); }
+
+  @Get('monitoring')
+  listAllMonitoring() { return this.svc.listAllMonitoring(); }
+
+  @Get('contracts')
+  listAllContracts() { return this.svc.listAllContracts(); }
+
+  @Get('documents')
+  listAllDocuments() { return this.svc.listAllDocuments(); }
+
+  @Get('communications')
+  listAllCommunications() { return this.svc.listAllCommunications(); }
+
+  @Get('final-reports')
+  listAllFinalReports() { return this.svc.listAllFinalReports(); }
 
   // ─── Terms ──────────────────────────────────────────────────────────────────
 
