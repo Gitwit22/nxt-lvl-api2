@@ -580,7 +580,7 @@ export class ClientflowService {
           this.prisma.cfFormTemplate.upsert({
             where: { id: t['id'] as string },
             create: { ...(t as any), organizationId: orgId, fields: (t['fields'] ?? []) as Prisma.InputJsonValue, emailTemplate: (t['emailTemplate'] as string) ?? '' } as any,
-            update: {},
+            update: { fields: (t['fields'] ?? []) as Prisma.InputJsonValue },
           }).catch(logError('formTemplate', t['id'])),
         ),
       );

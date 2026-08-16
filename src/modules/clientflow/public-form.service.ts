@@ -22,6 +22,14 @@ interface ClientIntake {
   additionalComments?: string;
 }
 
+const SOCIAL_HOSTS: Record<string, string[]> = {
+  facebookUrl: ['facebook.com', 'fb.com'],
+  instagramUrl: ['instagram.com'],
+  linkedinUrl: ['linkedin.com'],
+  tiktokUrl: ['tiktok.com'],
+  youtubeUrl: ['youtube.com', 'youtu.be'],
+};
+
 const TOP_LEVEL_RESPONSE_KEYS: Record<string, string> = {
   businessName: 'businessName',
   primaryContactName: 'primaryContactName',
@@ -57,7 +65,7 @@ function mapResponsesToClient(
   fields: FormFieldShape[],
   responses: Record<string, string>,
   currentIntake: ClientIntake,
-): { client: Record<string, string>; intake: ClientIntake } {
+): { client: Record<string, string>; intake: ClientIntake; socialLinks?: string[] } {
   const client: Record<string, string> = {};
   const intake = { ...currentIntake };
 
@@ -81,7 +89,14 @@ function mapResponsesToClient(
     if (intakeKey) intake[intakeKey] = value;
   }
 
-  return { client, intake };
+  const hasSocialFields = fields.some((field) => field.id in SOCIAL_HOSTS);
+  const socialLinks = hasSocialFields
+    ? Object.keys(SOCIAL_HOSTS)
+        .map((fieldId) => responses[fieldId]?.trim())
+        .filter((value): value is string => Boolean(value))
+    : undefined;
+
+  return { client, intake, socialLinks };
 }
 
 function resolvePrefill(
@@ -92,6 +107,7 @@ function resolvePrefill(
     businessName: string;
     primaryContactName: string;
     website?: string | null;
+    socialLinks?: Prisma.JsonValue;
     intake: ClientIntake;
   },
 ): Record<string, string> {
@@ -129,9 +145,18 @@ function resolvePrefill(
     budget: intake.budgetNeed ?? '',
   };
 
+  const socialLinks = Array.isArray(client.socialLinks)
+    ? client.socialLinks.filter((link): link is string => typeof link === 'string')
+    : [];
+
   for (const field of fields) {
     let value = '';
-    if (field.prefillKey && byKey[field.prefillKey]) {
+    const socialHosts = SOCIAL_HOSTS[field.id];
+    if (socialHosts) {
+      value = socialLinks.find((link) =>
+        socialHosts.some((host) => link.toLowerCase().includes(host)),
+      ) ?? '';
+    } else if (field.prefillKey && byKey[field.prefillKey]) {
       value = byKey[field.prefillKey];
     } else if (byFieldId[field.id]) {
       value = byFieldId[field.id];
@@ -152,7 +177,7 @@ export class PublicFormService {
     });
     if (!assignment) throw new NotFoundException('Form link not found.');
 
-    const [template, client, program] = await Promise.all([
+    const [template, client, program, programs] = await Promise.all([
       this.prisma.cfFormTemplate.findFirst({
         where: { id: assignment.formId, organizationId: assignment.organizationId },
       }),
@@ -161,6 +186,11 @@ export class PublicFormService {
       }),
       this.prisma.cfProgram.findFirst({
         where: { organizationId: assignment.organizationId, defaultFormTemplateId: assignment.formId },
+      }),
+      this.prisma.cfProgram.findMany({
+        where: { organizationId: assignment.organizationId, isActive: true },
+        orderBy: { name: 'asc' },
+        select: { name: true },
       }),
     ]);
 
@@ -189,6 +219,7 @@ export class PublicFormService {
           businessName: client.businessName,
           primaryContactName: client.primaryContactName,
           website: client.website,
+          socialLinks: client.socialLinks,
           intake: (client.intake ?? {}) as ClientIntake,
         })
       : {};
@@ -203,13 +234,19 @@ export class PublicFormService {
         id: template.id,
         name: template.name,
         description: template.description,
-        fields: fields.map(({ id, label, type, required, options }) => ({
-          id,
-          label,
-          type,
-          required,
-          ...(options?.length ? { options } : {}),
-        })),
+        fields: fields.map(({ id, label, type, required, options, prefillKey }) => {
+          const resolvedOptions =
+            id === 'program' || prefillKey === 'programOfInterest'
+              ? programs.map(({ name }) => name)
+              : options;
+          return {
+            id,
+            label,
+            type,
+            required,
+            ...(resolvedOptions?.length ? { options: resolvedOptions } : {}),
+          };
+        }),
       },
       program: {
         name: program?.name ?? 'EA Management Program',
@@ -263,6 +300,16 @@ export class PublicFormService {
       dto.responses,
       (existingClient.intake ?? {}) as ClientIntake,
     );
+    const selectedProgram = mapped.intake.programOfInterest
+      ? await this.prisma.cfProgram.findFirst({
+          where: {
+            organizationId: assignment.organizationId,
+            name: mapped.intake.programOfInterest,
+            isActive: true,
+          },
+          select: { id: true },
+        })
+      : null;
     const now = new Date();
     const EARLY_STAGE_STATUSES = new Set(['New Intake', 'Screening', 'Applied']);
 
@@ -283,8 +330,11 @@ export class PublicFormService {
         where: { id: assignment.clientId },
         data: {
           ...mapped.client,
+          ...(mapped.socialLinks !== undefined && { socialLinks: mapped.socialLinks }),
           intake: mapped.intake as Prisma.InputJsonValue,
-          ...(template.programId ? { programId: template.programId } : {}),
+          ...((selectedProgram?.id ?? template.programId)
+            ? { programId: selectedProgram?.id ?? template.programId }
+            : {}),
           ...(EARLY_STAGE_STATUSES.has(existingClient.status) ? { status: 'Qualified' } : {}),
         },
       });
