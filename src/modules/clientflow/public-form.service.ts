@@ -22,6 +22,68 @@ interface ClientIntake {
   additionalComments?: string;
 }
 
+const TOP_LEVEL_RESPONSE_KEYS: Record<string, string> = {
+  businessName: 'businessName',
+  primaryContactName: 'primaryContactName',
+  email: 'email',
+  phone: 'phone',
+  website: 'website',
+  business: 'businessName',
+  bizName: 'businessName',
+  brandName: 'businessName',
+  name: 'primaryContactName',
+  fullName: 'primaryContactName',
+  applicant: 'primaryContactName',
+};
+
+const INTAKE_RESPONSE_KEYS: Record<string, keyof ClientIntake> = {
+  businessDescription: 'businessDescription',
+  description: 'businessDescription',
+  assistanceRequested: 'assistanceRequested',
+  assistance: 'assistanceRequested',
+  programOfInterest: 'programOfInterest',
+  program: 'programOfInterest',
+  budgetNeed: 'budgetNeed',
+  budget: 'budgetNeed',
+  preferredContact: 'preferredContact',
+  contact_pref: 'preferredContact',
+  heardAboutUs: 'heardAboutUs',
+  heard: 'heardAboutUs',
+  additionalComments: 'additionalComments',
+  comments: 'additionalComments',
+};
+
+function mapResponsesToClient(
+  fields: FormFieldShape[],
+  responses: Record<string, string>,
+  currentIntake: ClientIntake,
+): { client: Record<string, string>; intake: ClientIntake } {
+  const client: Record<string, string> = {};
+  const intake = { ...currentIntake };
+
+  for (const field of fields) {
+    const value = responses[field.id]?.trim();
+    if (!value) continue;
+
+    const mappingKey = field.prefillKey ?? field.id;
+    if (field.id === 'contact' && /preferred/i.test(field.label)) {
+      intake.preferredContact = value;
+      continue;
+    }
+
+    const topLevelKey = TOP_LEVEL_RESPONSE_KEYS[mappingKey];
+    if (topLevelKey) {
+      client[topLevelKey] = value;
+      continue;
+    }
+
+    const intakeKey = INTAKE_RESPONSE_KEYS[mappingKey];
+    if (intakeKey) intake[intakeKey] = value;
+  }
+
+  return { client, intake };
+}
+
 function resolvePrefill(
   fields: FormFieldShape[],
   client: {
@@ -170,53 +232,73 @@ export class PublicFormService {
       throw new BadRequestException(`This form has already been ${assignment.status}.`);
     }
 
-    const now = new Date();
-
-    await this.prisma.cfFormAssignment.update({
-      where: { id: assignment.id },
-      data: {
-        status: 'submitted',
-        responses: dto.responses as Prisma.InputJsonValue,
-        submittedAt: now,
-        ...(dto.startedAt && !assignment.startedAt
-          ? { startedAt: new Date(dto.startedAt) }
-          : {}),
-      },
-    });
-
-    const [program, existingClient] = await Promise.all([
-      this.prisma.cfProgram.findFirst({
-        where: {
-          organizationId: assignment.organizationId,
-          defaultFormTemplateId: assignment.formId,
-        },
+    const [template, existingClient] = await Promise.all([
+      this.prisma.cfFormTemplate.findFirst({
+        where: { id: assignment.formId, organizationId: assignment.organizationId },
       }),
       this.prisma.cfClient.findFirst({
-        where: { id: assignment.clientId },
-        select: { status: true },
+        where: { id: assignment.clientId, organizationId: assignment.organizationId },
       }),
     ]);
+    if (!template) throw new NotFoundException('Form configuration not found.');
+    if (!existingClient) throw new NotFoundException('Client record not found.');
 
+    const fields = (Array.isArray(template.fields) ? template.fields : []) as unknown as FormFieldShape[];
+    const responseEntries = Object.entries(dto.responses);
+    if (responseEntries.some(([, value]) => typeof value !== 'string')) {
+      throw new BadRequestException('Every form response must be text.');
+    }
+
+    const missingFields = fields.filter(
+      (field) => field.required && !dto.responses[field.id]?.trim(),
+    );
+    if (missingFields.length > 0) {
+      throw new BadRequestException(
+        `Please complete: ${missingFields.map((field) => field.label).join(', ')}.`,
+      );
+    }
+
+    const mapped = mapResponsesToClient(
+      fields,
+      dto.responses,
+      (existingClient.intake ?? {}) as ClientIntake,
+    );
+    const now = new Date();
     const EARLY_STAGE_STATUSES = new Set(['New Intake', 'Screening', 'Applied']);
-    await this.prisma.cfClient.update({
-      where: { id: assignment.clientId },
-      data: {
-        ...(program ? { programId: program.id } : {}),
-        ...(existingClient && EARLY_STAGE_STATUSES.has(existingClient.status)
-          ? { status: 'Qualified' }
-          : {}),
-      },
-    });
 
-    await this.prisma.cfActivityLog.create({
-      data: {
-        organizationId: assignment.organizationId,
-        clientId: assignment.clientId,
-        action: 'Form submitted',
-        description: `Secure-link form submitted (${assignment.formId}).`,
-        user: 'client',
-        timestamp: now,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.cfFormAssignment.update({
+        where: { id: assignment.id },
+        data: {
+          status: 'submitted',
+          responses: dto.responses as Prisma.InputJsonValue,
+          submittedAt: now,
+          ...(dto.startedAt && !assignment.startedAt
+            ? { startedAt: new Date(dto.startedAt) }
+            : {}),
+        },
+      });
+
+      await tx.cfClient.update({
+        where: { id: assignment.clientId },
+        data: {
+          ...mapped.client,
+          intake: mapped.intake as Prisma.InputJsonValue,
+          ...(template.programId ? { programId: template.programId } : {}),
+          ...(EARLY_STAGE_STATUSES.has(existingClient.status) ? { status: 'Qualified' } : {}),
+        },
+      });
+
+      await tx.cfActivityLog.create({
+        data: {
+          organizationId: assignment.organizationId,
+          clientId: assignment.clientId,
+          action: 'Form submitted',
+          description: `Secure-link form submitted (${assignment.formId}).`,
+          user: 'client',
+          timestamp: now,
+        },
+      });
     });
 
     return { success: true };
