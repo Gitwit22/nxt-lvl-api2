@@ -25,3 +25,7 @@ export class UpdateCfFormAssignmentDto {
   @IsOptional() @IsString() submittedAt?: string;
   @IsOptional() @IsString() cancelledAt?: string;
 }
+
+export class SendCfFormAssignmentDto {
+  @IsOptional() @IsString() personalMessage?: string;
+}

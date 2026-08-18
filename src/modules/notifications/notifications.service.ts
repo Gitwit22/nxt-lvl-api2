@@ -1,4 +1,4 @@
-﻿import { Inject, Injectable, Logger, Scope } from '@nestjs/common';
+﻿import { Inject, Injectable, Logger, Scope, ServiceUnavailableException } from '@nestjs/common';
 import { REQUEST } from '@nestjs/core';
 import {
   SendEmailUseCase,
@@ -80,7 +80,7 @@ export class NotificationsService {
     secureLink: string;
     personalMessage?: string;
   }): Promise<void> {
-    if (!this.useCase) return;
+    if (!this.useCase) throw new ServiceUnavailableException('Email notifications are not configured.');
     const partition = this.request.partition;
     const personalBlock = options.personalMessage
       ? `<p style="background:#f9f9f9;border-left:3px solid #C45A8A;padding:12px 16px;margin:16px 0;font-style:italic;">${options.personalMessage}</p>`

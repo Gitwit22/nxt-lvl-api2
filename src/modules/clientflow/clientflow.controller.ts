@@ -6,7 +6,11 @@ import { ClientflowService } from './clientflow.service';
 import { CreateCfClientDto } from './dto/create-cf-client.dto';
 import { UpdateCfClientDto } from './dto/update-cf-client.dto';
 import { CreateCfProgramDto, UpdateCfProgramDto } from './dto/cf-program.dto';
-import { CreateCfFormAssignmentDto, UpdateCfFormAssignmentDto } from './dto/cf-form-assignment.dto';
+import {
+  CreateCfFormAssignmentDto,
+  SendCfFormAssignmentDto,
+  UpdateCfFormAssignmentDto,
+} from './dto/cf-form-assignment.dto';
 import { CreateCfFormTemplateDto, UpdateCfFormTemplateDto } from './dto/cf-form-template.dto';
 import { CreateCfTermsDto, UpdateCfTermsDto } from './dto/cf-terms.dto';
 import { CreateCfMonitoringDto, UpdateCfMonitoringDto } from './dto/cf-monitoring.dto';
@@ -68,6 +72,11 @@ export class ClientflowController {
 
   @Post('form-assignments')
   createFormAssignment(@Body() dto: CreateCfFormAssignmentDto) { return this.svc.createFormAssignment(dto); }
+
+  @Post('form-assignments/:id/send')
+  sendFormAssignment(@Param('id') id: string, @Body() dto: SendCfFormAssignmentDto) {
+    return this.svc.sendFormAssignment(id, dto);
+  }
 
   @Patch('form-assignments/:id')
   updateFormAssignment(@Param('id') id: string, @Body() dto: UpdateCfFormAssignmentDto) { return this.svc.updateFormAssignment(id, dto); }

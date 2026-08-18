@@ -13,6 +13,7 @@ import { CreateCfMonitoringDto, UpdateCfMonitoringDto } from './dto/cf-monitorin
 import { CreateCfContractDto, UpdateCfContractDto } from './dto/cf-contract.dto';
 import { CreateCfDocumentDto, CreateCfCommunicationDto, CreateCfFinalReportDto, CreateCfActivityDto } from './dto/cf-records.dto';
 import { CreateCfFormTemplateDto, UpdateCfFormTemplateDto } from './dto/cf-form-template.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable({ scope: Scope.REQUEST })
 export class ClientflowService {
@@ -21,6 +22,7 @@ export class ClientflowService {
   constructor(
     @Inject(REQUEST) private readonly request: PartitionRequest,
     private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   private async getOrgId(): Promise<string> {
@@ -237,8 +239,14 @@ export class ClientflowService {
 
   async createFormAssignment(dto: CreateCfFormAssignmentDto) {
     const orgId = await this.getOrgId();
+    await this.verifyClientBelongsToOrg(dto.clientId, orgId);
+    const form = await this.prisma.cfFormTemplate.findFirst({
+      where: { id: dto.formId, organizationId: orgId },
+    });
+    if (!form) throw new NotFoundException('Form template not found.');
+
     const token = randomBytes(32).toString('hex');
-    const secureLink = `${this.request.partition.appUrl}/forms/${token}`;
+    const secureLink = `${this.request.partition.appUrl}/s/${token}`;
     return this.prisma.cfFormAssignment.create({
       data: {
         organizationId: orgId,
@@ -249,14 +257,50 @@ export class ClientflowService {
         deliveryMethod: dto.deliveryMethod,
         recipientEmail: dto.recipientEmail ?? null,
         recipientPhone: dto.recipientPhone ?? null,
-        status: dto.status ?? 'draft',
+        status: 'draft',
         dueDate: dto.dueDate,
         secureLink,
         secureLinkToken: token,
         createdByUserId: dto.createdByUserId,
         isDemo: dto.isDemo ?? false,
-        sentAt: dto.sentAt ? new Date(dto.sentAt) : null,
+        sentAt: null,
       },
+    });
+  }
+
+  async sendFormAssignment(id: string, dto: { personalMessage?: string }) {
+    const orgId = await this.getOrgId();
+    const assignment = await this.prisma.cfFormAssignment.findFirst({
+      where: { id, organizationId: orgId },
+    });
+    if (!assignment) throw new NotFoundException('Form assignment not found.');
+    if (!assignment.secureLink) throw new NotFoundException('Secure form link not found.');
+
+    const [client, form] = await Promise.all([
+      this.prisma.cfClient.findFirst({ where: { id: assignment.clientId, organizationId: orgId } }),
+      this.prisma.cfFormTemplate.findFirst({ where: { id: assignment.formId, organizationId: orgId } }),
+    ]);
+    if (!client) throw new NotFoundException('Client not found.');
+    if (!form) throw new NotFoundException('Form template not found.');
+
+    const program = await this.prisma.cfProgram.findFirst({
+      where: { id: form.programId, organizationId: orgId },
+    });
+    await this.notifications.sendFormLink({
+      to: assignment.recipientEmail ?? client.email,
+      contactName: client.primaryContactName,
+      formName: form.name,
+      programName: program?.name ?? 'EA Management Program',
+      dueDate: assignment.dueDate
+        ? new Date(assignment.dueDate).toLocaleDateString('en-US')
+        : 'As soon as possible',
+      secureLink: assignment.secureLink,
+      personalMessage: dto.personalMessage,
+    });
+
+    return this.prisma.cfFormAssignment.update({
+      where: { id: assignment.id },
+      data: { status: 'sent', sentAt: new Date() },
     });
   }
 

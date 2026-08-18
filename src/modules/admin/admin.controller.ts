@@ -123,7 +123,6 @@ export class AdminController {
   ) {
     const to = typeof body['to'] === 'string' ? body['to'].trim() : '';
     const secureLink = typeof body['secureLink'] === 'string' ? body['secureLink'].trim() : '';
-    // Basic email format guard to prevent header injection
     if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return;
     if (!secureLink) return;
     await this.notifications.sendFormLink({
@@ -136,4 +135,5 @@ export class AdminController {
       personalMessage: typeof body['personalMessage'] === 'string' ? body['personalMessage'] : undefined,
     }).catch(() => undefined);
   }
+
 }
