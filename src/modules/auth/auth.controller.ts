@@ -15,8 +15,9 @@ export class AuthController {
 
   @Post('logout')
   @UseGuards(AdminJwtGuard)
-  logout() {
-    return { message: 'Logged out.' };
+  logout(@Req() req: Request) {
+    const sessionId = req.headers['x-session-id'] as string;
+    return this.authService.logout(sessionId);
   }
 
   @Get('me')

@@ -2,6 +2,7 @@ import {
   Body, Controller, Get, Param, Patch, Post, Query, UseGuards,
 } from '@nestjs/common';
 import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
+import { OrgAdminGuard } from '../../common/guards/org-admin.guard';
 import { ClientflowService } from './clientflow.service';
 import { CreateCfClientDto } from './dto/create-cf-client.dto';
 import { UpdateCfClientDto } from './dto/update-cf-client.dto';
@@ -12,6 +13,7 @@ import {
   UpdateCfFormAssignmentDto,
 } from './dto/cf-form-assignment.dto';
 import { CreateCfFormTemplateDto, UpdateCfFormTemplateDto } from './dto/cf-form-template.dto';
+import { TransitionToLiveModeDto } from './dto/transition-to-live-mode.dto';
 import { CreateCfTermsDto, UpdateCfTermsDto } from './dto/cf-terms.dto';
 import { CreateCfMonitoringDto, UpdateCfMonitoringDto } from './dto/cf-monitoring.dto';
 import { CreateCfContractDto, UpdateCfContractDto } from './dto/cf-contract.dto';
@@ -175,5 +177,6 @@ export class ClientflowController {
   seedDemo(@Body() payload: Record<string, unknown[]>) { return this.svc.seedDemo(payload); }
 
   @Post('remove-demo')
-  removeDemo(@Body() ids: Record<string, string[]>) { return this.svc.removeDemo(ids); }
+  @UseGuards(OrgAdminGuard)
+  removeDemo(@Body() dto: TransitionToLiveModeDto) { return this.svc.removeDemo(dto); }
 }

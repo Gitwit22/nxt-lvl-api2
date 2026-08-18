@@ -68,16 +68,20 @@ enum AuditAction {
 }
 
 model Organization {
-  id          String      @id @default(cuid())
-  name        String
-  slug        String      @unique
-  status      String      @default("active")
-  settings    Json?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  programs    Program[]
-  adminUsers  AdminUser[]
-  auditLogs   AuditLog[]
+  id               String      @id @default(cuid())
+  name             String
+  slug             String      @unique
+  status           String      @default("active")
+  settings         Json?
+  liveMode         Boolean     @default(false)
+  demoRemovedAt    DateTime?
+  principalAdminId String?     @unique
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  programs         Program[]
+  adminUsers       AdminUser[] @relation("OrganizationMembers")
+  principalAdmin   AdminUser?  @relation("OrganizationPrincipal", fields: [principalAdminId], references: [id], onDelete: SetNull)
+  auditLogs        AuditLog[]
 }
 
 model Program {
@@ -305,12 +309,14 @@ model AdminUser {
   createdAt                DateTime               @default(now())
   updatedAt                DateTime               @updatedAt
 
-  organization             Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization             Organization           @relation("OrganizationMembers", fields: [organizationId], references: [id], onDelete: Cascade)
+  principalOf              Organization?          @relation("OrganizationPrincipal")
   reviewedSubmissions      BusinessSubmission[]   @relation("SubmissionReviewedBy")
   reviewedChangeRequests   BusinessChangeRequest[] @relation("ChangeRequestReviewedBy")
   uploadedFiles            FileAsset[]
   auditLogs                AuditLog[]
   invitation               AdminInvitation?
+  sessions                 AuthSession[]
 
   @@index([organizationId, role])
 }
@@ -321,11 +327,26 @@ model AdminInvitation {
   tokenHash   String    @unique
   expiresAt   DateTime
   acceptedAt  DateTime?
+  revokedAt   DateTime?
   createdAt   DateTime  @default(now())
 
   adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
 
   @@index([tokenHash])
+}
+
+model AuthSession {
+  id          String    @id
+  adminUserId String
+  jti         String    @unique
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@index([adminUserId, revokedAt])
+  @@index([expiresAt])
 }
 
 model CinemaStudioState {
@@ -406,6 +427,7 @@ model CfClient {
   updatedAt          DateTime  @updatedAt
 
   @@index([organizationId])
+  @@index([organizationId, isDemo])
   @@index([organizationId, isArchived])
 }
 
@@ -472,6 +494,7 @@ model CfFormAssignment {
   updatedAt        DateTime  @updatedAt
 
   @@index([organizationId])
+  @@index([organizationId, isDemo])
   @@index([organizationId, clientId])
 }
 
@@ -497,9 +520,11 @@ model CfTerms {
   monitoringFrequency  String
   specialConditions    String
   approvalStatus       String   @default("Pending")
+  isDemo               Boolean  @default(false)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
+  @@index([organizationId, isDemo])
   @@index([organizationId, clientId])
 }
 
@@ -514,10 +539,12 @@ model CfMonitoringItem {
   assignedStaff  String
   notes          String    @default("")
   completedAt    DateTime?
+  isDemo         Boolean   @default(false)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   @@index([organizationId])
+  @@index([organizationId, isDemo])
   @@index([organizationId, clientId])
 }
 
@@ -532,10 +559,12 @@ model CfContract {
   content        String    @db.Text
   sentAt         DateTime?
   signedAt       DateTime?
+  isDemo         Boolean   @default(false)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   @@index([organizationId])
+  @@index([organizationId, isDemo])
   @@index([organizationId, clientId])
 }
 
@@ -548,9 +577,11 @@ model CfDocument {
   url            String
   uploadedAt     DateTime @default(now())
   uploadedBy     String
+  isDemo         Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  @@index([organizationId, isDemo])
   @@index([organizationId, clientId])
 }
 
@@ -564,9 +595,11 @@ model CfCommunication {
   notes          String   @default("")
   date           DateTime
   staffMember    String
+  isDemo         Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  @@index([organizationId, isDemo])
   @@index([organizationId, clientId])
 }
 
@@ -587,9 +620,11 @@ model CfFinalReport {
   clientOutcome         String
   recommendedNextSteps  String
   archiveDecision       String
+  isDemo                Boolean  @default(false)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
+  @@index([organizationId, isDemo])
   @@index([organizationId, clientId])
 }
 
@@ -601,7 +636,9 @@ model CfActivityLog {
   description    String
   user           String
   timestamp      DateTime @default(now())
+  isDemo         Boolean  @default(false)
 
   @@index([organizationId])
+  @@index([organizationId, isDemo])
   @@index([organizationId, clientId])
 }

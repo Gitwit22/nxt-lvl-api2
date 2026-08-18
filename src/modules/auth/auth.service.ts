@@ -3,7 +3,7 @@ import { REQUEST } from '@nestjs/core';
 import { LoginUseCase, defaultAuthConfig } from '@nxtlvl/auth-core';
 import type { LoginCredentials } from '@nxtlvl/auth-core';
 import { createHash, randomUUID } from 'crypto';
-import { sign } from 'jsonwebtoken';
+import { decode, sign } from 'jsonwebtoken';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PrismaAuthRepository } from './infrastructure/prisma-auth-repository';
@@ -49,7 +49,7 @@ export class AuthService {
       where: { id: result.user.id },
     });
 
-    const accessToken = this.signWithOrgId(
+    const accessToken = await this.issueSessionToken(
       result.user.id,
       result.user.email,
       result.user.roles as string[],
@@ -78,6 +78,7 @@ export class AuthService {
 
     if (!invitation) return { valid: false, reason: 'Invitation not found.' };
     if (invitation.acceptedAt) return { valid: false, reason: 'Invitation already accepted.' };
+    if (invitation.revokedAt) return { valid: false, reason: 'Invitation has been revoked.' };
     if (invitation.expiresAt < new Date()) return { valid: false, reason: 'Invitation has expired.' };
 
     return {
@@ -99,6 +100,7 @@ export class AuthService {
 
     if (!invitation) throw new NotFoundException('Invitation not found.');
     if (invitation.acceptedAt) throw new BadRequestException('Invitation already accepted.');
+    if (invitation.revokedAt) throw new BadRequestException('Invitation has been revoked.');
     if (invitation.expiresAt < new Date()) throw new BadRequestException('Invitation has expired. Ask your admin to resend the invite.');
 
     const passwordHash = await this.passwordHasher.hash(newPassword);
@@ -116,7 +118,7 @@ export class AuthService {
 
     const { adminUser } = invitation;
     const tokenService = new JwtTokenService(this.request.partition.authIssuer);
-    const accessToken = this.signWithOrgId(
+    const accessToken = await this.issueSessionToken(
       adminUser.id,
       adminUser.email,
       [adminUser.role],
@@ -143,16 +145,48 @@ export class AuthService {
     return admin;
   }
 
+  async logout(sessionId: string) {
+    await this.prisma.authSession.updateMany({
+      where: { id: sessionId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    return { message: 'Logged out.' };
+  }
+
+  private async issueSessionToken(
+    sub: string,
+    email: string,
+    roles: string[],
+    organizationId?: string,
+  ): Promise<string> {
+    const sessionId = randomUUID();
+    const jti = randomUUID();
+    const token = this.signWithOrgId(sub, email, roles, organizationId, sessionId, jti);
+    const payload = decode(token) as { exp?: number } | null;
+    if (!payload?.exp) throw new UnauthorizedException('Could not create an authenticated session.');
+    await this.prisma.authSession.create({
+      data: {
+        id: sessionId,
+        adminUserId: sub,
+        jti,
+        expiresAt: new Date(payload.exp * 1000),
+      },
+    });
+    return token;
+  }
+
   private signWithOrgId(
     sub: string,
     email: string,
     roles: string[],
     organizationId?: string,
+    sessionId = randomUUID(),
+    jti = randomUUID(),
   ): string {
     const secret = process.env['JWT_SECRET'] ?? '';
     const expiresIn = (process.env['JWT_EXPIRES_IN'] ?? '1d') as unknown as number;
     return sign(
-      { email, roles, sessionId: randomUUID(), jti: randomUUID(), organizationId },
+      { email, roles, sessionId, jti, organizationId },
       secret,
       { subject: sub, expiresIn, issuer: this.request.partition.authIssuer },
     );

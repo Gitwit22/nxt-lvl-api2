@@ -43,10 +43,24 @@ export class OrganizationsService {
 
   async getSettings(orgId: string) {
     await this.verifyOrgAccess(orgId);
-    const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      include: {
+        principalAdmin: {
+          select: { id: true, email: true, firstName: true, lastName: true },
+        },
+      },
+    });
     if (!org) throw new NotFoundException('Organization not found.');
     const settings = (org.settings as Record<string, unknown>) ?? {};
-    return { id: org.id, name: org.name, settings };
+    return {
+      id: org.id,
+      name: org.name,
+      settings,
+      liveMode: org.liveMode,
+      demoRemovedAt: org.demoRemovedAt,
+      principal: org.principalAdmin,
+    };
   }
 
   async updateSettings(orgId: string, dto: UpdateOrgSettingsDto) {
@@ -67,12 +81,28 @@ export class OrganizationsService {
         ...(dto.name ? { name: dto.name } : {}),
         settings: newSettings as Prisma.InputJsonValue,
       },
+      include: {
+        principalAdmin: {
+          select: { id: true, email: true, firstName: true, lastName: true },
+        },
+      },
     });
-    return { id: updated.id, name: updated.name, settings: (updated.settings as Record<string, unknown>) ?? {} };
+    return {
+      id: updated.id,
+      name: updated.name,
+      settings: (updated.settings as Record<string, unknown>) ?? {},
+      liveMode: updated.liveMode,
+      demoRemovedAt: updated.demoRemovedAt,
+      principal: updated.principalAdmin,
+    };
   }
 
   async listMembers(orgId: string) {
     await this.verifyOrgAccess(orgId);
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { principalAdminId: true },
+    });
     const members = await this.prisma.adminUser.findMany({
       where: { organizationId: orgId },
       select: {
@@ -83,7 +113,7 @@ export class OrganizationsService {
         role: true,
         isActive: true,
         createdAt: true,
-        invitation: { select: { acceptedAt: true } },
+        invitation: { select: { acceptedAt: true, revokedAt: true } },
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -95,7 +125,10 @@ export class OrganizationsService {
       role: m.role,
       isActive: m.isActive,
       createdAt: m.createdAt,
-      invitePending: m.invitation ? m.invitation.acceptedAt === null : false,
+      invitePending: m.invitation
+        ? m.invitation.acceptedAt === null && m.invitation.revokedAt === null
+        : false,
+      isPrincipal: m.id === organization?.principalAdminId,
     }));
   }
 
@@ -151,6 +184,13 @@ export class OrganizationsService {
       where: { id: memberId, organizationId: orgId },
     });
     if (!member) throw new NotFoundException('Member not found.');
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { principalAdminId: true },
+    });
+    if (organization?.principalAdminId === memberId) {
+      throw new BadRequestException('The organization principal cannot be demoted.');
+    }
     if (memberId === this.getAdminId()) {
       throw new BadRequestException('You cannot change your own role.');
     }
@@ -167,6 +207,13 @@ export class OrganizationsService {
       where: { id: memberId, organizationId: orgId },
     });
     if (!member) throw new NotFoundException('Member not found.');
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { principalAdminId: true },
+    });
+    if (organization?.principalAdminId === memberId) {
+      throw new BadRequestException('The organization principal cannot be disabled.');
+    }
     if (memberId === this.getAdminId()) {
       throw new BadRequestException('You cannot disable your own account.');
     }

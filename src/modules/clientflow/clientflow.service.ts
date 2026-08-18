@@ -1,6 +1,7 @@
-import { Inject, Injectable, NotFoundException, Scope } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, Scope, UnauthorizedException } from '@nestjs/common';
 import { REQUEST } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
+import { compare } from 'bcrypt';
 import { randomBytes } from 'crypto';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -13,7 +14,14 @@ import { CreateCfMonitoringDto, UpdateCfMonitoringDto } from './dto/cf-monitorin
 import { CreateCfContractDto, UpdateCfContractDto } from './dto/cf-contract.dto';
 import { CreateCfDocumentDto, CreateCfCommunicationDto, CreateCfFinalReportDto, CreateCfActivityDto } from './dto/cf-records.dto';
 import { CreateCfFormTemplateDto, UpdateCfFormTemplateDto } from './dto/cf-form-template.dto';
+import { TransitionToLiveModeDto } from './dto/transition-to-live-mode.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+
+type LiveOrganizationState = {
+  liveMode: boolean;
+  demoRemovedAt: Date | null;
+  principalAdminId: string | null;
+};
 
 @Injectable({ scope: Scope.REQUEST })
 export class ClientflowService {
@@ -597,6 +605,13 @@ export class ClientflowService {
     activity?: unknown[];
   }) {
     const orgId = await this.getOrgId();
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+    }) as unknown as LiveOrganizationState | null;
+    if (!organization) throw new NotFoundException('Organization not found.');
+    if (organization.liveMode) {
+      return { seeded: {}, errors: [], liveMode: true };
+    }
 
     const results: Record<string, number> = {};
     const errors: Array<{ id: string; entity: string; error: string }> = [];
@@ -636,8 +651,8 @@ export class ClientflowService {
         (payload.clients as Record<string, unknown>[]).map((c) =>
           this.prisma.cfClient.upsert({
             where: { id: c['id'] as string },
-            create: { ...(c as any), organizationId: orgId, intake: (c['intake'] ?? {}) as Prisma.InputJsonValue, snapchat: c['snapchat'] ? (c['snapchat'] as Prisma.InputJsonValue) : Prisma.JsonNull, socialLinks: (c['socialLinks'] ?? []) as Prisma.InputJsonValue, nextFollowUpDate: c['nextFollowUpDate'] ? new Date(c['nextFollowUpDate'] as string) : null, convertedAt: c['convertedAt'] ? new Date(c['convertedAt'] as string) : null, archivedAt: c['archivedAt'] ? new Date(c['archivedAt'] as string) : null } as any,
-            update: {},
+            create: { ...(c as any), organizationId: orgId, isDemo: true, intake: (c['intake'] ?? {}) as Prisma.InputJsonValue, snapchat: c['snapchat'] ? (c['snapchat'] as Prisma.InputJsonValue) : Prisma.JsonNull, socialLinks: (c['socialLinks'] ?? []) as Prisma.InputJsonValue, nextFollowUpDate: c['nextFollowUpDate'] ? new Date(c['nextFollowUpDate'] as string) : null, convertedAt: c['convertedAt'] ? new Date(c['convertedAt'] as string) : null, archivedAt: c['archivedAt'] ? new Date(c['archivedAt'] as string) : null } as any,
+            update: { isDemo: true },
           }).catch(logError('client', c['id'])),
         ),
       );
@@ -649,8 +664,8 @@ export class ClientflowService {
         (payload.formAssignments as Record<string, unknown>[]).map((a) =>
           this.prisma.cfFormAssignment.upsert({
             where: { id: a['id'] as string },
-            create: { ...(a as any), organizationId: orgId, responses: a['responses'] ? (a['responses'] as Prisma.InputJsonValue) : Prisma.JsonNull, editHistory: a['editHistory'] ? (a['editHistory'] as Prisma.InputJsonValue) : Prisma.JsonNull, sentAt: a['sentAt'] ? new Date(a['sentAt'] as string) : null, openedAt: a['openedAt'] ? new Date(a['openedAt'] as string) : null, submittedAt: a['submittedAt'] ? new Date(a['submittedAt'] as string) : null, cancelledAt: a['cancelledAt'] ? new Date(a['cancelledAt'] as string) : null, startedAt: a['startedAt'] ? new Date(a['startedAt'] as string) : null, dueAt: a['dueAt'] ? new Date(a['dueAt'] as string) : null } as any,
-            update: {},
+            create: { ...(a as any), organizationId: orgId, isDemo: true, responses: a['responses'] ? (a['responses'] as Prisma.InputJsonValue) : Prisma.JsonNull, editHistory: a['editHistory'] ? (a['editHistory'] as Prisma.InputJsonValue) : Prisma.JsonNull, sentAt: a['sentAt'] ? new Date(a['sentAt'] as string) : null, openedAt: a['openedAt'] ? new Date(a['openedAt'] as string) : null, submittedAt: a['submittedAt'] ? new Date(a['submittedAt'] as string) : null, cancelledAt: a['cancelledAt'] ? new Date(a['cancelledAt'] as string) : null, startedAt: a['startedAt'] ? new Date(a['startedAt'] as string) : null, dueAt: a['dueAt'] ? new Date(a['dueAt'] as string) : null } as any,
+            update: { isDemo: true },
           }).catch(logError('formAssignment', a['id'])),
         ),
       );
@@ -662,8 +677,8 @@ export class ClientflowService {
         (payload.terms as Record<string, unknown>[]).map((t) =>
           this.prisma.cfTerms.upsert({
             where: { id: t['id'] as string },
-            create: { ...(t as any), organizationId: orgId } as any,
-            update: {},
+            create: { ...(t as any), organizationId: orgId, isDemo: true } as any,
+            update: { isDemo: true },
           }).catch(logError('terms', t['id'])),
         ),
       );
@@ -675,8 +690,8 @@ export class ClientflowService {
         (payload.monitoring as Record<string, unknown>[]).map((m) =>
           this.prisma.cfMonitoringItem.upsert({
             where: { id: m['id'] as string },
-            create: { ...(m as any), organizationId: orgId, dueDate: new Date(m['dueDate'] as string), completedAt: m['completedAt'] ? new Date(m['completedAt'] as string) : null } as any,
-            update: {},
+            create: { ...(m as any), organizationId: orgId, isDemo: true, dueDate: new Date(m['dueDate'] as string), completedAt: m['completedAt'] ? new Date(m['completedAt'] as string) : null } as any,
+            update: { isDemo: true },
           }).catch(logError('monitoring', m['id'])),
         ),
       );
@@ -688,8 +703,8 @@ export class ClientflowService {
         (payload.contracts as Record<string, unknown>[]).map((c) =>
           this.prisma.cfContract.upsert({
             where: { id: c['id'] as string },
-            create: { ...(c as any), organizationId: orgId, sentAt: c['sentAt'] ? new Date(c['sentAt'] as string) : null, signedAt: c['signedAt'] ? new Date(c['signedAt'] as string) : null } as any,
-            update: {},
+            create: { ...(c as any), organizationId: orgId, isDemo: true, sentAt: c['sentAt'] ? new Date(c['sentAt'] as string) : null, signedAt: c['signedAt'] ? new Date(c['signedAt'] as string) : null } as any,
+            update: { isDemo: true },
           }).catch(logError('contract', c['id'])),
         ),
       );
@@ -701,8 +716,8 @@ export class ClientflowService {
         (payload.documents as Record<string, unknown>[]).map((d) =>
           this.prisma.cfDocument.upsert({
             where: { id: d['id'] as string },
-            create: { ...(d as any), organizationId: orgId, uploadedAt: d['uploadedAt'] ? new Date(d['uploadedAt'] as string) : new Date() } as any,
-            update: {},
+            create: { ...(d as any), organizationId: orgId, isDemo: true, uploadedAt: d['uploadedAt'] ? new Date(d['uploadedAt'] as string) : new Date() } as any,
+            update: { isDemo: true },
           }).catch(logError('document', d['id'])),
         ),
       );
@@ -714,8 +729,8 @@ export class ClientflowService {
         (payload.communications as Record<string, unknown>[]).map((c) =>
           this.prisma.cfCommunication.upsert({
             where: { id: c['id'] as string },
-            create: { ...(c as any), organizationId: orgId, date: new Date(c['date'] as string) } as any,
-            update: {},
+            create: { ...(c as any), organizationId: orgId, isDemo: true, date: new Date(c['date'] as string) } as any,
+            update: { isDemo: true },
           }).catch(logError('communication', c['id'])),
         ),
       );
@@ -727,8 +742,8 @@ export class ClientflowService {
         (payload.finalReports as Record<string, unknown>[]).map((f) =>
           this.prisma.cfFinalReport.upsert({
             where: { id: f['id'] as string },
-            create: { ...(f as any), organizationId: orgId } as any,
-            update: {},
+            create: { ...(f as any), organizationId: orgId, isDemo: true } as any,
+            update: { isDemo: true },
           }).catch(logError('finalReport', f['id'])),
         ),
       );
@@ -740,49 +755,149 @@ export class ClientflowService {
         (payload.activity as Record<string, unknown>[]).map((a) =>
           this.prisma.cfActivityLog.upsert({
             where: { id: a['id'] as string },
-            create: { ...(a as any), organizationId: orgId, timestamp: a['timestamp'] ? new Date(a['timestamp'] as string) : new Date() } as any,
-            update: {},
+            create: { ...(a as any), organizationId: orgId, isDemo: true, timestamp: a['timestamp'] ? new Date(a['timestamp'] as string) : new Date() } as any,
+            update: { isDemo: true },
           }).catch(logError('activity', a['id'])),
         ),
       );
       results.activity = payload.activity.length;
     }
 
-    return { seeded: results, errors };
+    return { seeded: results, errors, liveMode: false };
   }
 
   // ─── Demo Remove ────────────────────────────────────────────────────────────
 
-  async removeDemo(ids: {
-    clientIds?: string[];
-    programIds?: string[];
-    formTemplateIds?: string[];
-    formAssignmentIds?: string[];
-    termsIds?: string[];
-    monitoringIds?: string[];
-    contractIds?: string[];
-    documentIds?: string[];
-    communicationIds?: string[];
-    finalReportIds?: string[];
-    activityIds?: string[];
-  }) {
+  async removeDemo(dto: TransitionToLiveModeDto) {
     const orgId = await this.getOrgId();
-    const where = (idList: string[]) => ({ id: { in: idList }, organizationId: orgId });
+    const adminId = this.request.headers['x-admin-id'] as string | undefined;
+    if (!adminId) throw new UnauthorizedException('Admin context missing.');
+    if (dto.confirmation !== 'ENABLE LIVE MODE') {
+      throw new BadRequestException('Type ENABLE LIVE MODE to confirm.');
+    }
 
-    await Promise.all([
-      ids.clientIds?.length && this.prisma.cfClient.deleteMany({ where: where(ids.clientIds) }),
-      ids.programIds?.length && this.prisma.cfProgram.deleteMany({ where: where(ids.programIds) }),
-      ids.formTemplateIds?.length && this.prisma.cfFormTemplate.deleteMany({ where: where(ids.formTemplateIds) }),
-      ids.formAssignmentIds?.length && this.prisma.cfFormAssignment.deleteMany({ where: where(ids.formAssignmentIds) }),
-      ids.termsIds?.length && this.prisma.cfTerms.deleteMany({ where: where(ids.termsIds) }),
-      ids.monitoringIds?.length && this.prisma.cfMonitoringItem.deleteMany({ where: where(ids.monitoringIds) }),
-      ids.contractIds?.length && this.prisma.cfContract.deleteMany({ where: where(ids.contractIds) }),
-      ids.documentIds?.length && this.prisma.cfDocument.deleteMany({ where: where(ids.documentIds) }),
-      ids.communicationIds?.length && this.prisma.cfCommunication.deleteMany({ where: where(ids.communicationIds) }),
-      ids.finalReportIds?.length && this.prisma.cfFinalReport.deleteMany({ where: where(ids.finalReportIds) }),
-      ids.activityIds?.length && this.prisma.cfActivityLog.deleteMany({ where: where(ids.activityIds) }),
-    ].filter(Boolean));
+    const actor = await this.prisma.adminUser.findFirst({
+      where: { id: adminId, organizationId: orgId },
+    });
+    if (!actor || !actor.isActive) throw new ForbiddenException('An active organization administrator is required.');
+    if (actor.role !== 'org_admin' && actor.role !== 'super_admin') {
+      throw new ForbiddenException('Only organization administrators can enable live mode.');
+    }
+    if (!(await compare(dto.currentPassword, actor.passwordHash))) {
+      throw new UnauthorizedException('Current password is incorrect.');
+    }
 
-    return { removed: true };
+    return this.prisma.$transaction(async (tx) => {
+      const organization = await tx.organization.findUnique({
+        where: { id: orgId },
+      }) as unknown as LiveOrganizationState | null;
+      if (!organization) throw new NotFoundException('Organization not found.');
+      if (organization.liveMode) {
+        return {
+          liveMode: true,
+          demoRemovedAt: organization.demoRemovedAt,
+          principalAdminId: organization.principalAdminId,
+          disabledPersonnel: 0,
+          revokedInvitations: 0,
+          revokedSessions: 0,
+          removed: {},
+        };
+      }
+
+      const otherPersonnel = await tx.adminUser.findMany({
+        where: { organizationId: orgId, id: { not: adminId } },
+        select: { id: true },
+      });
+      const otherPersonnelIds = otherPersonnel.map(({ id }) => id);
+      const disabledPersonnel = await tx.adminUser.updateMany({
+        where: { organizationId: orgId, id: { not: adminId }, isActive: true },
+        data: { isActive: false },
+      });
+      const revokedAt = new Date();
+      const revokedInvitations = otherPersonnelIds.length
+        ? await tx.adminInvitation.updateMany({
+            where: {
+              adminUserId: { in: otherPersonnelIds },
+              acceptedAt: null,
+              revokedAt: null,
+            },
+            data: { revokedAt },
+          })
+        : { count: 0 };
+      const sessionDelegate = (tx as unknown as {
+        authSession: {
+          updateMany(args: {
+            where: { adminUserId: { in: string[] }; revokedAt: null };
+            data: { revokedAt: Date };
+          }): Promise<{ count: number }>;
+        };
+      }).authSession;
+      const revokedSessions = otherPersonnelIds.length
+        ? await sessionDelegate.updateMany({
+            where: { adminUserId: { in: otherPersonnelIds }, revokedAt: null },
+            data: { revokedAt },
+          })
+        : { count: 0 };
+
+      const demoWhere = { organizationId: orgId, isDemo: true };
+      const removedActivity = await tx.cfActivityLog.deleteMany({ where: demoWhere });
+      const removedCommunications = await tx.cfCommunication.deleteMany({ where: demoWhere });
+      const removedDocuments = await tx.cfDocument.deleteMany({ where: demoWhere });
+      const removedReports = await tx.cfFinalReport.deleteMany({ where: demoWhere });
+      const removedContracts = await tx.cfContract.deleteMany({ where: demoWhere });
+      const removedMonitoring = await tx.cfMonitoringItem.deleteMany({ where: demoWhere });
+      const removedTerms = await tx.cfTerms.deleteMany({ where: demoWhere });
+      const removedAssignments = await tx.cfFormAssignment.deleteMany({ where: demoWhere });
+      const removedClients = await tx.cfClient.deleteMany({ where: demoWhere });
+
+      const updatedOrganization = await tx.organization.update({
+        where: { id: orgId },
+        data: {
+          liveMode: true,
+          demoRemovedAt: revokedAt,
+          principalAdminId: adminId,
+        },
+      }) as unknown as LiveOrganizationState;
+      await tx.auditLog.create({
+        data: {
+          organizationId: orgId,
+          actorAdminId: adminId,
+          action: 'published',
+          targetType: 'Organization',
+          targetId: orgId,
+          metadata: {
+            event: 'CLIENTFLOW_LIVE_MODE_ENABLED',
+            principalAdminId: adminId,
+            disabledPersonnel: disabledPersonnel.count,
+            revokedInvitations: revokedInvitations.count,
+            revokedSessions: revokedSessions.count,
+          },
+        },
+      });
+
+      return {
+        liveMode: true,
+        demoRemovedAt: updatedOrganization.demoRemovedAt,
+        principalAdminId: adminId,
+        disabledPersonnel: disabledPersonnel.count,
+        revokedInvitations: revokedInvitations.count,
+        revokedSessions: revokedSessions.count,
+        removed: {
+          clients: removedClients.count,
+          formAssignments: removedAssignments.count,
+          terms: removedTerms.count,
+          monitoring: removedMonitoring.count,
+          contracts: removedContracts.count,
+          documents: removedDocuments.count,
+          communications: removedCommunications.count,
+          finalReports: removedReports.count,
+          activity: removedActivity.count,
+        },
+      };
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      maxWait: 5_000,
+      timeout: 15_000,
+    });
   }
 }
