@@ -1,4 +1,11 @@
-﻿import { Inject, Injectable, Logger, Scope, ServiceUnavailableException } from '@nestjs/common';
+﻿import {
+  BadGatewayException,
+  Inject,
+  Injectable,
+  Logger,
+  Scope,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { REQUEST } from '@nestjs/core';
 import {
   SendEmailUseCase,
@@ -98,7 +105,7 @@ export class NotificationsService {
       '',
       `— ${partition.appName}`,
     ];
-    await this.useCase.execute({
+    const result = await this.useCase.execute({
       to: options.to,
       subject: `Action required: ${options.formName}`,
       html: `
@@ -126,6 +133,13 @@ export class NotificationsService {
       `,
       text: textParts.join('\n'),
     });
+    if (!result.success) {
+      if ('skipped' in result) {
+        throw new ServiceUnavailableException('Email delivery is disabled.');
+      }
+      this.logger.error(`Form email delivery failed: ${result.error.message}`);
+      throw new BadGatewayException('The email provider rejected the form email.');
+    }
   }
 
   async sendUpdateRequestReviewed(options: {
