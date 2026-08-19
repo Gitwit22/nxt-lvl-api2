@@ -173,6 +173,9 @@ export class ClientflowController {
 
   // ─── Demo Data ───────────────────────────────────────────────────────────────
 
+  @Get('demo-status')
+  getDemoStatus() { return this.svc.getDemoStatus(); }
+
   @Post('seed-demo')
   seedDemo(@Body() payload: Record<string, unknown[]>) { return this.svc.seedDemo(payload); }
 

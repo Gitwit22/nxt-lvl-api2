@@ -591,6 +591,16 @@ export class ClientflowService {
 
   // ─── Demo Seed ──────────────────────────────────────────────────────────────
 
+  async getDemoStatus() {
+    const orgId = await this.getOrgId();
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { liveMode: true, demoRemovedAt: true, principalAdminId: true },
+    });
+    if (!organization) throw new NotFoundException('Organization not found.');
+    return organization;
+  }
+
   async seedDemo(payload: {
     clients?: unknown[];
     programs?: unknown[];
@@ -772,8 +782,8 @@ export class ClientflowService {
     const orgId = await this.getOrgId();
     const adminId = this.request.headers['x-admin-id'] as string | undefined;
     if (!adminId) throw new UnauthorizedException('Admin context missing.');
-    if (dto.confirmation !== 'ENABLE LIVE MODE') {
-      throw new BadRequestException('Type ENABLE LIVE MODE to confirm.');
+    if (dto.confirmation !== 'REMOVE DEMO DATA') {
+      throw new BadRequestException('Type REMOVE DEMO DATA to confirm.');
     }
 
     const actor = await this.prisma.adminUser.findFirst({
@@ -781,7 +791,7 @@ export class ClientflowService {
     });
     if (!actor || !actor.isActive) throw new ForbiddenException('An active organization administrator is required.');
     if (actor.role !== 'org_admin' && actor.role !== 'super_admin') {
-      throw new ForbiddenException('Only organization administrators can enable live mode.');
+      throw new ForbiddenException('Only organization administrators can remove demo data permanently.');
     }
     if (!(await compare(dto.currentPassword, actor.passwordHash))) {
       throw new UnauthorizedException('Current password is incorrect.');
@@ -797,47 +807,10 @@ export class ClientflowService {
           liveMode: true,
           demoRemovedAt: organization.demoRemovedAt,
           principalAdminId: organization.principalAdminId,
-          disabledPersonnel: 0,
-          revokedInvitations: 0,
-          revokedSessions: 0,
           removed: {},
         };
       }
-
-      const otherPersonnel = await tx.adminUser.findMany({
-        where: { organizationId: orgId, id: { not: adminId } },
-        select: { id: true },
-      });
-      const otherPersonnelIds = otherPersonnel.map(({ id }) => id);
-      const disabledPersonnel = await tx.adminUser.updateMany({
-        where: { organizationId: orgId, id: { not: adminId }, isActive: true },
-        data: { isActive: false },
-      });
       const revokedAt = new Date();
-      const revokedInvitations = otherPersonnelIds.length
-        ? await tx.adminInvitation.updateMany({
-            where: {
-              adminUserId: { in: otherPersonnelIds },
-              acceptedAt: null,
-              revokedAt: null,
-            },
-            data: { revokedAt },
-          })
-        : { count: 0 };
-      const sessionDelegate = (tx as unknown as {
-        authSession: {
-          updateMany(args: {
-            where: { adminUserId: { in: string[] }; revokedAt: null };
-            data: { revokedAt: Date };
-          }): Promise<{ count: number }>;
-        };
-      }).authSession;
-      const revokedSessions = otherPersonnelIds.length
-        ? await sessionDelegate.updateMany({
-            where: { adminUserId: { in: otherPersonnelIds }, revokedAt: null },
-            data: { revokedAt },
-          })
-        : { count: 0 };
 
       const demoWhere = { organizationId: orgId, isDemo: true };
       const removedActivity = await tx.cfActivityLog.deleteMany({ where: demoWhere });
@@ -868,9 +841,7 @@ export class ClientflowService {
           metadata: {
             event: 'CLIENTFLOW_LIVE_MODE_ENABLED',
             principalAdminId: adminId,
-            disabledPersonnel: disabledPersonnel.count,
-            revokedInvitations: revokedInvitations.count,
-            revokedSessions: revokedSessions.count,
+            removedDemoData: true,
           },
         },
       });
@@ -879,9 +850,6 @@ export class ClientflowService {
         liveMode: true,
         demoRemovedAt: updatedOrganization.demoRemovedAt,
         principalAdminId: adminId,
-        disabledPersonnel: disabledPersonnel.count,
-        revokedInvitations: revokedInvitations.count,
-        revokedSessions: revokedSessions.count,
         removed: {
           clients: removedClients.count,
           formAssignments: removedAssignments.count,
