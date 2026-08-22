@@ -18,6 +18,7 @@ const source = new SourcePrismaClient();
 const target = new TargetPrismaClient();
 
 const modelNames = Prisma.dmmf.datamodel.models.map(({ name }) => name);
+const requiredSourceModels = ['CfClient', 'CfProgram', 'CfFormTemplate', 'CfFormAssignment'];
 
 function delegateFor(modelName: string): Delegate {
   const delegateName = `${modelName[0].toLowerCase()}${modelName.slice(1)}`;
@@ -43,6 +44,18 @@ async function sourceRows(modelName: string, columns: string[]): Promise<Row[]> 
   return source.$queryRawUnsafe<Row[]>(
     `SELECT ${selection} FROM ${quoteIdentifier(modelName)} ORDER BY "id"`,
   );
+}
+
+async function assertClientflowSource(): Promise<void> {
+  const missingModels: string[] = [];
+  for (const modelName of requiredSourceModels) {
+    if ((await sourceColumns(modelName)).size === 0) missingModels.push(modelName);
+  }
+  if (missingModels.length > 0) {
+    throw new Error(
+      `DATABASE_URL is not the legacy ClientFlow database; missing source tables: ${missingModels.join(', ')}`,
+    );
+  }
 }
 
 async function copyModel(modelName: string): Promise<number | null> {
@@ -206,6 +219,7 @@ async function linkLegacyRecords(): Promise<void> {
 }
 
 async function copy(): Promise<void> {
+  await assertClientflowSource();
   const copied: Record<string, number> = {};
   for (const modelName of modelNames) {
     const count = await copyModel(modelName);
@@ -217,6 +231,7 @@ async function copy(): Promise<void> {
 }
 
 async function verify(): Promise<void> {
+  await assertClientflowSource();
   const failures: string[] = [];
   const counts: Record<string, { source: number; target: number }> = {};
 

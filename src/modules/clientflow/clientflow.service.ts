@@ -605,28 +605,79 @@ export class ClientflowService {
     return organization;
   }
 
+  private async deletePersistedDemoData(orgId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const demoWhere = { organizationId: orgId, isDemo: true };
+      const [demoAssignments, demoSubmissions, demoEnrollments] = await Promise.all([
+        tx.cfFormAssignment.findMany({ where: demoWhere, select: { id: true } }),
+        tx.cfIntakeSubmission.findMany({ where: demoWhere, select: { id: true } }),
+        tx.cfProgramEnrollment.findMany({ where: demoWhere, select: { id: true } }),
+      ]);
+      const demoAssignmentIds = demoAssignments.map(({ id }) => id);
+      const demoSubmissionIds = demoSubmissions.map(({ id }) => id);
+      const demoEnrollmentIds = demoEnrollments.map(({ id }) => id);
+
+      const removedSubmissionPrograms = await tx.cfIntakeSubmissionProgram.deleteMany({
+        where: { organizationId: orgId, intakeSubmissionId: { in: demoSubmissionIds } },
+      });
+      const removedSubmissionSnapshots = await tx.cfIntakeSubmissionSnapshot.deleteMany({
+        where: { organizationId: orgId, intakeSubmissionId: { in: demoSubmissionIds } },
+      });
+      const removedRenderSessions = await tx.cfIntakeRenderSession.deleteMany({
+        where: { organizationId: orgId, formAssignmentId: { in: demoAssignmentIds } },
+      });
+      const removedSubmissions = await tx.cfIntakeSubmission.deleteMany({ where: demoWhere });
+      const removedEnrollmentHistory = await tx.cfEnrollmentStatusHistory.deleteMany({
+        where: { organizationId: orgId, enrollmentId: { in: demoEnrollmentIds } },
+      });
+      const removedTasks = await tx.cfTask.deleteMany({ where: demoWhere });
+      const removedActivity = await tx.cfActivityLog.deleteMany({ where: demoWhere });
+      const removedCommunications = await tx.cfCommunication.deleteMany({ where: demoWhere });
+      const removedDocuments = await tx.cfDocument.deleteMany({ where: demoWhere });
+      const removedReports = await tx.cfFinalReport.deleteMany({ where: demoWhere });
+      const removedContracts = await tx.cfContract.deleteMany({ where: demoWhere });
+      const removedMonitoring = await tx.cfMonitoringItem.deleteMany({ where: demoWhere });
+      const removedTerms = await tx.cfTerms.deleteMany({ where: demoWhere });
+      const removedAssignments = await tx.cfFormAssignment.deleteMany({ where: demoWhere });
+      const removedEnrollments = await tx.cfProgramEnrollment.deleteMany({ where: demoWhere });
+      const removedClients = await tx.cfClient.deleteMany({ where: demoWhere });
+
+      return {
+        clients: removedClients.count,
+        enrollments: removedEnrollments.count,
+        enrollmentHistory: removedEnrollmentHistory.count,
+        intakeSubmissions: removedSubmissions.count,
+        intakeSubmissionSnapshots: removedSubmissionSnapshots.count,
+        intakeSubmissionPrograms: removedSubmissionPrograms.count,
+        intakeRenderSessions: removedRenderSessions.count,
+        tasks: removedTasks.count,
+        formAssignments: removedAssignments.count,
+        terms: removedTerms.count,
+        monitoring: removedMonitoring.count,
+        contracts: removedContracts.count,
+        documents: removedDocuments.count,
+        communications: removedCommunications.count,
+        finalReports: removedReports.count,
+        activity: removedActivity.count,
+      };
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      maxWait: 5_000,
+      timeout: 15_000,
+    });
+  }
+
   async seedDemo(payload: {
-    clients?: unknown[];
     programs?: unknown[];
     formTemplates?: unknown[];
-    formAssignments?: unknown[];
-    terms?: unknown[];
-    monitoring?: unknown[];
-    contracts?: unknown[];
-    documents?: unknown[];
-    communications?: unknown[];
-    finalReports?: unknown[];
-    activity?: unknown[];
   }) {
     const orgId = await this.getOrgId();
     const organization = await this.primaryPrisma.organization.findUnique({
       where: { id: orgId },
     }) as unknown as LiveOrganizationState | null;
     if (!organization) throw new NotFoundException('Organization not found.');
-    if (organization.liveMode) {
-      return { seeded: {}, errors: [], liveMode: true };
-    }
 
+    const removed = await this.deletePersistedDemoData(orgId);
     const results: Record<string, number> = {};
     const errors: Array<{ id: string; entity: string; error: string }> = [];
     const logError = (entity: string, id: unknown) => (err: unknown): null => {
@@ -653,131 +704,14 @@ export class ClientflowService {
           this.prisma.cfFormTemplate.upsert({
             where: { id: t['id'] as string },
             create: { ...(t as any), organizationId: orgId, fields: (t['fields'] ?? []) as Prisma.InputJsonValue, emailTemplate: (t['emailTemplate'] as string) ?? '' } as any,
-            update: { fields: (t['fields'] ?? []) as Prisma.InputJsonValue },
+            update: {},
           }).catch(logError('formTemplate', t['id'])),
         ),
       );
       results.formTemplates = payload.formTemplates.length;
     }
 
-    if (payload.clients?.length) {
-      await Promise.all(
-        (payload.clients as Record<string, unknown>[]).map((c) =>
-          this.prisma.cfClient.upsert({
-            where: { id: c['id'] as string },
-            create: { ...(c as any), organizationId: orgId, isDemo: true, intake: (c['intake'] ?? {}) as Prisma.InputJsonValue, snapchat: c['snapchat'] ? (c['snapchat'] as Prisma.InputJsonValue) : Prisma.JsonNull, socialLinks: (c['socialLinks'] ?? []) as Prisma.InputJsonValue, nextFollowUpDate: c['nextFollowUpDate'] ? new Date(c['nextFollowUpDate'] as string) : null, convertedAt: c['convertedAt'] ? new Date(c['convertedAt'] as string) : null, archivedAt: c['archivedAt'] ? new Date(c['archivedAt'] as string) : null } as any,
-            update: { isDemo: true },
-          }).catch(logError('client', c['id'])),
-        ),
-      );
-      results.clients = payload.clients.length;
-    }
-
-    if (payload.formAssignments?.length) {
-      await Promise.all(
-        (payload.formAssignments as Record<string, unknown>[]).map((a) =>
-          this.prisma.cfFormAssignment.upsert({
-            where: { id: a['id'] as string },
-            create: { ...(a as any), organizationId: orgId, isDemo: true, responses: a['responses'] ? (a['responses'] as Prisma.InputJsonValue) : Prisma.JsonNull, editHistory: a['editHistory'] ? (a['editHistory'] as Prisma.InputJsonValue) : Prisma.JsonNull, sentAt: a['sentAt'] ? new Date(a['sentAt'] as string) : null, openedAt: a['openedAt'] ? new Date(a['openedAt'] as string) : null, submittedAt: a['submittedAt'] ? new Date(a['submittedAt'] as string) : null, cancelledAt: a['cancelledAt'] ? new Date(a['cancelledAt'] as string) : null, startedAt: a['startedAt'] ? new Date(a['startedAt'] as string) : null, dueAt: a['dueAt'] ? new Date(a['dueAt'] as string) : null } as any,
-            update: { isDemo: true },
-          }).catch(logError('formAssignment', a['id'])),
-        ),
-      );
-      results.formAssignments = payload.formAssignments.length;
-    }
-
-    if (payload.terms?.length) {
-      await Promise.all(
-        (payload.terms as Record<string, unknown>[]).map((t) =>
-          this.prisma.cfTerms.upsert({
-            where: { id: t['id'] as string },
-            create: { ...(t as any), organizationId: orgId, isDemo: true } as any,
-            update: { isDemo: true },
-          }).catch(logError('terms', t['id'])),
-        ),
-      );
-      results.terms = payload.terms.length;
-    }
-
-    if (payload.monitoring?.length) {
-      await Promise.all(
-        (payload.monitoring as Record<string, unknown>[]).map((m) =>
-          this.prisma.cfMonitoringItem.upsert({
-            where: { id: m['id'] as string },
-            create: { ...(m as any), organizationId: orgId, isDemo: true, dueDate: new Date(m['dueDate'] as string), completedAt: m['completedAt'] ? new Date(m['completedAt'] as string) : null } as any,
-            update: { isDemo: true },
-          }).catch(logError('monitoring', m['id'])),
-        ),
-      );
-      results.monitoring = payload.monitoring.length;
-    }
-
-    if (payload.contracts?.length) {
-      await Promise.all(
-        (payload.contracts as Record<string, unknown>[]).map((c) =>
-          this.prisma.cfContract.upsert({
-            where: { id: c['id'] as string },
-            create: { ...(c as any), organizationId: orgId, isDemo: true, sentAt: c['sentAt'] ? new Date(c['sentAt'] as string) : null, signedAt: c['signedAt'] ? new Date(c['signedAt'] as string) : null } as any,
-            update: { isDemo: true },
-          }).catch(logError('contract', c['id'])),
-        ),
-      );
-      results.contracts = payload.contracts.length;
-    }
-
-    if (payload.documents?.length) {
-      await Promise.all(
-        (payload.documents as Record<string, unknown>[]).map((d) =>
-          this.prisma.cfDocument.upsert({
-            where: { id: d['id'] as string },
-            create: { ...(d as any), organizationId: orgId, isDemo: true, uploadedAt: d['uploadedAt'] ? new Date(d['uploadedAt'] as string) : new Date() } as any,
-            update: { isDemo: true },
-          }).catch(logError('document', d['id'])),
-        ),
-      );
-      results.documents = payload.documents.length;
-    }
-
-    if (payload.communications?.length) {
-      await Promise.all(
-        (payload.communications as Record<string, unknown>[]).map((c) =>
-          this.prisma.cfCommunication.upsert({
-            where: { id: c['id'] as string },
-            create: { ...(c as any), organizationId: orgId, isDemo: true, date: new Date(c['date'] as string) } as any,
-            update: { isDemo: true },
-          }).catch(logError('communication', c['id'])),
-        ),
-      );
-      results.communications = payload.communications.length;
-    }
-
-    if (payload.finalReports?.length) {
-      await Promise.all(
-        (payload.finalReports as Record<string, unknown>[]).map((f) =>
-          this.prisma.cfFinalReport.upsert({
-            where: { id: f['id'] as string },
-            create: { ...(f as any), organizationId: orgId, isDemo: true } as any,
-            update: { isDemo: true },
-          }).catch(logError('finalReport', f['id'])),
-        ),
-      );
-      results.finalReports = payload.finalReports.length;
-    }
-
-    if (payload.activity?.length) {
-      await Promise.all(
-        (payload.activity as Record<string, unknown>[]).map((a) =>
-          this.prisma.cfActivityLog.upsert({
-            where: { id: a['id'] as string },
-            create: { ...(a as any), organizationId: orgId, isDemo: true, timestamp: a['timestamp'] ? new Date(a['timestamp'] as string) : new Date() } as any,
-            update: { isDemo: true },
-          }).catch(logError('activity', a['id'])),
-        ),
-      );
-      results.activity = payload.activity.length;
-    }
-
-    return { seeded: results, errors, liveMode: false };
+    return { seeded: results, removed, errors, liveMode: organization.liveMode };
   }
 
   // ─── Demo Remove ────────────────────────────────────────────────────────────
