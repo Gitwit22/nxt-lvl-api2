@@ -386,6 +386,7 @@ model CfIntakeSubmissionProgram {
   intakeSubmissionId String
   programId          String
   enrollmentId       String
+  responsePayload    Json     @default("{}")
   createdAt          DateTime @default(now())
 
   @@unique([intakeSubmissionId, programId])

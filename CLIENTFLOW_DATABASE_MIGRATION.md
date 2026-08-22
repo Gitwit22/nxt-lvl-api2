@@ -25,6 +25,16 @@ The copy command only reads `Cf*` tables from `DATABASE_URL`. It upserts target 
 
 Do not run `prisma migrate deploy` for the primary schema as part of this cutover. Its migration history must be verified separately.
 
+## Form Normalization
+
+After the ClientFlow database exists, use the secure runner to deploy pending ClientFlow migrations, audit repeated intake fields, and optionally apply normalization:
+
+```powershell
+npm run clientflow:forms:deploy
+```
+
+The runner prompts for `CLIENTFLOW_DATABASE_URL` when it is not already set, keeps it only in the current process, prints the target host and database without credentials, and requires typing `APPLY` after the dry-run report. To run the commands separately, first set `CLIENTFLOW_DATABASE_URL` in the same PowerShell session.
+
 ## Cutover
 
 1. Keep ClientFlow writes paused after verification succeeds.

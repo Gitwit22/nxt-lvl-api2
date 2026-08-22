@@ -17,12 +17,56 @@ import { CreateCfDocumentDto, CreateCfCommunicationDto, CreateCfFinalReportDto, 
 import { CreateCfFormTemplateDto, UpdateCfFormTemplateDto } from './dto/cf-form-template.dto';
 import { TransitionToLiveModeDto } from './dto/transition-to-live-mode.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { canonicalFieldKey, MappableFormField } from './form-field-mapping';
 
 type LiveOrganizationState = {
   liveMode: boolean;
   demoRemovedAt: Date | null;
   principalAdminId: string | null;
 };
+
+function validateTemplateFields(
+  scope: string,
+  programId: string | null,
+  rawFields: unknown[],
+): void {
+  const fields = rawFields.filter((field): field is MappableFormField =>
+    Boolean(field)
+      && typeof field === 'object'
+      && typeof (field as MappableFormField).id === 'string'
+      && typeof (field as MappableFormField).label === 'string',
+  );
+  if (fields.length !== rawFields.length) {
+    throw new BadRequestException('Every form field requires an ID and label.');
+  }
+
+  const duplicateId = fields.find((field, index) =>
+    fields.findIndex((candidate) => candidate.id === field.id) !== index,
+  );
+  if (duplicateId) throw new BadRequestException(`Duplicate form field ID: ${duplicateId.id}.`);
+
+  const isProgramSection = scope === 'program_section' || (scope === 'legacy' && programId !== null);
+  if (isProgramSection) {
+    const repeated = fields.find((field) => canonicalFieldKey(field) !== null);
+    if (repeated) {
+      throw new BadRequestException(
+        `${repeated.label} is shared intake information and belongs in the Master Intake form.`,
+      );
+    }
+  }
+
+  if (scope === 'master_core') {
+    const seen = new Set<string>();
+    for (const field of fields) {
+      const canonical = canonicalFieldKey(field);
+      if (!canonical) continue;
+      if (seen.has(canonical)) {
+        throw new BadRequestException(`The Master Intake contains more than one ${canonical} field.`);
+      }
+      seen.add(canonical);
+    }
+  }
+}
 
 @Injectable({ scope: Scope.REQUEST })
 export class ClientflowService {
@@ -230,6 +274,7 @@ export class ClientflowService {
 
   async createFormTemplate(dto: CreateCfFormTemplateDto) {
     const orgId = await this.getOrgId();
+    validateTemplateFields(dto.scope ?? 'legacy', dto.programId ?? null, dto.fields ?? []);
     return this.prisma.cfFormTemplate.create({
       data: {
         ...(dto.id && { id: dto.id }),
@@ -253,6 +298,11 @@ export class ClientflowService {
     const orgId = await this.getOrgId();
     const existing = await this.prisma.cfFormTemplate.findFirst({ where: { id, organizationId: orgId } });
     if (!existing) throw new NotFoundException('Form template not found.');
+    validateTemplateFields(
+      dto.scope ?? existing.scope,
+      dto.programId !== undefined ? dto.programId : existing.programId,
+      dto.fields ?? (Array.isArray(existing.fields) ? existing.fields : []),
+    );
     return this.prisma.cfFormTemplate.update({
       where: { id },
       data: {
@@ -403,12 +453,15 @@ export class ClientflowService {
     });
     const ids = submissions.map(({ id }) => id);
     const clientIds = [...new Set(submissions.map(({ clientId: id }) => id))];
-    const [clients, links] = await Promise.all([
+    const [clients, links, snapshots] = await Promise.all([
       this.prisma.cfClient.findMany({
         where: { organizationId: orgId, id: { in: clientIds } },
         select: { id: true, businessName: true, primaryContactName: true, email: true },
       }),
       this.prisma.cfIntakeSubmissionProgram.findMany({
+        where: { organizationId: orgId, intakeSubmissionId: { in: ids } },
+      }),
+      this.prisma.cfIntakeSubmissionSnapshot.findMany({
         where: { organizationId: orgId, intakeSubmissionId: { in: ids } },
       }),
     ]);
@@ -417,6 +470,7 @@ export class ClientflowService {
       ...submission,
       client: clientById.get(submission.clientId) ?? null,
       programs: links.filter((link) => link.intakeSubmissionId === submission.id),
+      snapshot: snapshots.find((snapshot) => snapshot.intakeSubmissionId === submission.id) ?? null,
     }));
   }
 

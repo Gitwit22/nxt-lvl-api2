@@ -3,6 +3,7 @@ import { CfEnrollmentStatus, Prisma } from '../../generated/clientflow';
 import { createHash, randomBytes } from 'crypto';
 import { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
 import { PublicFormResponseValue, SubmitPublicFormDto } from './dto/submit-public-form.dto';
+import { INTAKE_FIELD_KEYS, TOP_LEVEL_FIELD_KEYS } from './form-field-mapping';
 
 interface FormFieldShape {
   id: string;
@@ -16,6 +17,7 @@ interface FormFieldShape {
 interface ClientIntake {
   businessDescription?: string;
   assistanceRequested?: string;
+  businessType?: string;
   programOfInterest?: string;
   budgetNeed?: string;
   preferredContact?: string;
@@ -42,37 +44,6 @@ const SOCIAL_HOSTS: Record<string, string[]> = {
   youtubeUrl: ['youtube.com', 'youtu.be'],
 };
 
-const TOP_LEVEL_RESPONSE_KEYS: Record<string, string> = {
-  businessName: 'businessName',
-  primaryContactName: 'primaryContactName',
-  email: 'email',
-  phone: 'phone',
-  website: 'website',
-  business: 'businessName',
-  bizName: 'businessName',
-  brandName: 'businessName',
-  name: 'primaryContactName',
-  fullName: 'primaryContactName',
-  applicant: 'primaryContactName',
-};
-
-const INTAKE_RESPONSE_KEYS: Record<string, keyof ClientIntake> = {
-  businessDescription: 'businessDescription',
-  description: 'businessDescription',
-  assistanceRequested: 'assistanceRequested',
-  assistance: 'assistanceRequested',
-  programOfInterest: 'programOfInterest',
-  program: 'programOfInterest',
-  budgetNeed: 'budgetNeed',
-  budget: 'budgetNeed',
-  preferredContact: 'preferredContact',
-  contact_pref: 'preferredContact',
-  heardAboutUs: 'heardAboutUs',
-  heard: 'heardAboutUs',
-  additionalComments: 'additionalComments',
-  comments: 'additionalComments',
-};
-
 function mapResponsesToClient(
   fields: FormFieldShape[],
   responses: Record<string, PublicFormResponseValue>,
@@ -92,13 +63,13 @@ function mapResponsesToClient(
       continue;
     }
 
-    const topLevelKey = TOP_LEVEL_RESPONSE_KEYS[mappingKey];
+    const topLevelKey = TOP_LEVEL_FIELD_KEYS[mappingKey];
     if (topLevelKey) {
       client[topLevelKey] = value;
       continue;
     }
 
-    const intakeKey = INTAKE_RESPONSE_KEYS[mappingKey];
+    const intakeKey = INTAKE_FIELD_KEYS[mappingKey] as keyof ClientIntake | undefined;
     if (intakeKey) intake[intakeKey] = value;
   }
 
@@ -138,7 +109,8 @@ function hashSubmission(dto: SubmitPublicFormDto): string {
   return createHash('sha256')
     .update(JSON.stringify(canonicalize({
       configurationToken: dto.configurationToken,
-      responses: dto.responses,
+      coreResponses: dto.coreResponses,
+      programResponses: dto.programResponses,
       selectedProgramIds: [...new Set(dto.selectedProgramIds)].sort(),
     })))
     .digest('hex');
@@ -168,6 +140,7 @@ function resolvePrefill(
     businessDescription: intake.businessDescription ?? '',
     programOfInterest: intake.programOfInterest ?? '',
     assistanceRequested: intake.assistanceRequested ?? '',
+    businessType: intake.businessType ?? '',
     budgetNeed: intake.budgetNeed ?? '',
     preferredContact: intake.preferredContact ?? '',
     heardAboutUs: intake.heardAboutUs ?? '',
@@ -186,6 +159,8 @@ function resolvePrefill(
     website: client.website ?? '',
     description: intake.businessDescription ?? '',
     assistance: intake.assistanceRequested ?? '',
+    bizType: intake.businessType ?? '',
+    industry: intake.businessType ?? '',
     program: intake.programOfInterest ?? '',
     budget: intake.budgetNeed ?? '',
   };
@@ -429,10 +404,35 @@ export class PublicFormService {
       throw new BadRequestException('One or more selected programs are inactive.');
     }
 
-    const visibleFields = selectedSections.flatMap((section) => section.fields);
-    const missingFields = visibleFields.filter(
-      (field) => field.required && isBlankResponse(dto.responses[field.id]),
+    const submittedProgramIds = Object.keys(dto.programResponses);
+    if (submittedProgramIds.some((programId) => !selectedProgramSet.has(programId))) {
+      throw new BadRequestException('Answers were submitted for an unselected program.');
+    }
+    if (selectedProgramIds.some((programId) =>
+      !Object.prototype.hasOwnProperty.call(dto.programResponses, programId),
+    )) {
+      throw new BadRequestException('Every selected program requires its own answer section.');
+    }
+
+    const coreFieldIds = new Set(coreSection.fields.map((field) => field.id));
+    if (Object.keys(dto.coreResponses).some((fieldId) => !coreFieldIds.has(fieldId))) {
+      throw new BadRequestException('One or more core answers do not belong to this form.');
+    }
+
+    const missingFields = coreSection.fields.filter(
+      (field) => field.required && isBlankResponse(dto.coreResponses[field.id]),
     );
+    for (const programId of selectedProgramIds) {
+      const section = selectedSections.find((candidate) => candidate.programId === programId);
+      const responses = dto.programResponses[programId] ?? {};
+      const fieldIds = new Set(section?.fields.map((field) => field.id) ?? []);
+      if (Object.keys(responses).some((fieldId) => !fieldIds.has(fieldId))) {
+        throw new BadRequestException('One or more program answers do not belong to the selected program.');
+      }
+      missingFields.push(...(section?.fields ?? []).filter(
+        (field) => field.required && isBlankResponse(responses[field.id]),
+      ));
+    }
     if (missingFields.length > 0) {
       throw new BadRequestException(
         `Please complete: ${missingFields.map((field) => field.label).join(', ')}.`,
@@ -441,7 +441,7 @@ export class PublicFormService {
 
     const mapped = mapResponsesToClient(
       coreSection.fields,
-      dto.responses,
+      dto.coreResponses,
       (existingClient.intake ?? {}) as ClientIntake,
     );
     const now = new Date();
@@ -506,7 +506,7 @@ export class PublicFormService {
           idempotencyKey: dto.idempotencyKey,
           requestHash,
           configurationToken: dto.configurationToken,
-          responsePayload: dto.responses as Prisma.InputJsonValue,
+          responsePayload: dto.coreResponses as Prisma.InputJsonValue,
           resultPayload: result,
           source: assignment.deliveryMethod ?? 'secure_link',
           submitterEmail: assignment.recipientEmail,
@@ -530,13 +530,14 @@ export class PublicFormService {
           intakeSubmissionId: submission.id,
           programId,
           enrollmentId: enrollmentByProgram.get(programId)!.id,
+          responsePayload: (dto.programResponses[programId] ?? {}) as Prisma.InputJsonValue,
         })),
       });
       await tx.cfFormAssignment.update({
         where: { id: assignment.id },
         data: {
           status: 'submitted',
-          responses: dto.responses as Prisma.InputJsonValue,
+          responses: dto.coreResponses as Prisma.InputJsonValue,
           submittedAt: now,
           ...(dto.startedAt && !assignment.startedAt
             ? { startedAt: new Date(dto.startedAt) }

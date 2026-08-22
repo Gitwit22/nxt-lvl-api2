@@ -4,7 +4,10 @@ export type PublicFormResponseValue = string | string[] | boolean | number | nul
 
 export class SubmitPublicFormDto {
   @IsObject()
-  responses!: Record<string, PublicFormResponseValue>;
+  coreResponses!: Record<string, PublicFormResponseValue>;
+
+  @IsObject()
+  programResponses!: Record<string, Record<string, PublicFormResponseValue>>;
 
   @IsString()
   idempotencyKey!: string;
