@@ -1,6 +1,7 @@
 import { IsString, IsOptional } from 'class-validator';
 
 export class CreateCfDocumentDto {
+  @IsOptional() @IsString() enrollmentId?: string;
   @IsString() name!: string;
   @IsString() type!: string;
   @IsString() url!: string;
@@ -9,6 +10,7 @@ export class CreateCfDocumentDto {
 }
 
 export class CreateCfCommunicationDto {
+  @IsOptional() @IsString() enrollmentId?: string;
   @IsString() type!: string;
   @IsString() direction!: string;
   @IsString() subject!: string;
@@ -18,6 +20,7 @@ export class CreateCfCommunicationDto {
 }
 
 export class CreateCfFinalReportDto {
+  @IsOptional() @IsString() enrollmentId?: string;
   @IsString() programId!: string;
   @IsString() startDate!: string;
   @IsString() endDate!: string;
@@ -35,6 +38,7 @@ export class CreateCfFinalReportDto {
 
 export class CreateCfActivityDto {
   @IsString() clientId!: string;
+  @IsOptional() @IsString() enrollmentId?: string;
   @IsString() action!: string;
   @IsString() description!: string;
   @IsString() user!: string;

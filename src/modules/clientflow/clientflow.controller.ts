@@ -99,7 +99,10 @@ export class ClientflowController {
   // ─── Form Assignments ────────────────────────────────────────────────────────
 
   @Get('form-assignments')
-  listFormAssignments(@Query('clientId') clientId?: string) { return this.svc.listFormAssignments(clientId); }
+  listFormAssignments(
+    @Query('clientId') clientId?: string,
+    @Query('enrollmentId') enrollmentId?: string,
+  ) { return this.svc.listFormAssignments(clientId, enrollmentId); }
 
   @Post('form-assignments')
   createFormAssignment(@Body() dto: CreateCfFormAssignmentDto) { return this.svc.createFormAssignment(dto); }
@@ -111,6 +114,17 @@ export class ClientflowController {
 
   @Patch('form-assignments/:id')
   updateFormAssignment(@Param('id') id: string, @Body() dto: UpdateCfFormAssignmentDto) { return this.svc.updateFormAssignment(id, dto); }
+
+  // ─── Intake Submission History ────────────────────────────────────────────
+
+  @Get('intake-submissions')
+  listIntakeSubmissions(
+    @Query('clientId') clientId?: string,
+    @Query('programId') programId?: string,
+  ) { return this.svc.listIntakeSubmissions(clientId, programId); }
+
+  @Get('intake-submissions/:id')
+  getIntakeSubmission(@Param('id') id: string) { return this.svc.getIntakeSubmission(id); }
 
   // ─── Global lists (all records for org) ────────────────────────────────────
 
@@ -135,7 +149,10 @@ export class ClientflowController {
   // ─── Terms ──────────────────────────────────────────────────────────────────
 
   @Get('clients/:clientId/terms')
-  listTerms(@Param('clientId') clientId: string) { return this.svc.listTerms(clientId); }
+  listTerms(
+    @Param('clientId') clientId: string,
+    @Query('enrollmentId') enrollmentId?: string,
+  ) { return this.svc.listTerms(clientId, enrollmentId); }
 
   @Post('clients/:clientId/terms')
   createTerms(@Param('clientId') clientId: string, @Body() dto: CreateCfTermsDto) { return this.svc.createTerms(clientId, dto); }
@@ -146,7 +163,10 @@ export class ClientflowController {
   // ─── Monitoring ─────────────────────────────────────────────────────────────
 
   @Get('clients/:clientId/monitoring')
-  listMonitoring(@Param('clientId') clientId: string) { return this.svc.listMonitoring(clientId); }
+  listMonitoring(
+    @Param('clientId') clientId: string,
+    @Query('enrollmentId') enrollmentId?: string,
+  ) { return this.svc.listMonitoring(clientId, enrollmentId); }
 
   @Post('clients/:clientId/monitoring')
   createMonitoringItem(@Param('clientId') clientId: string, @Body() dto: CreateCfMonitoringDto) { return this.svc.createMonitoringItem(clientId, dto); }
@@ -157,7 +177,10 @@ export class ClientflowController {
   // ─── Contracts ──────────────────────────────────────────────────────────────
 
   @Get('clients/:clientId/contracts')
-  listContracts(@Param('clientId') clientId: string) { return this.svc.listContracts(clientId); }
+  listContracts(
+    @Param('clientId') clientId: string,
+    @Query('enrollmentId') enrollmentId?: string,
+  ) { return this.svc.listContracts(clientId, enrollmentId); }
 
   @Post('clients/:clientId/contracts')
   createContract(@Param('clientId') clientId: string, @Body() dto: CreateCfContractDto) { return this.svc.createContract(clientId, dto); }
@@ -168,7 +191,10 @@ export class ClientflowController {
   // ─── Documents ──────────────────────────────────────────────────────────────
 
   @Get('clients/:clientId/documents')
-  listDocuments(@Param('clientId') clientId: string) { return this.svc.listDocuments(clientId); }
+  listDocuments(
+    @Param('clientId') clientId: string,
+    @Query('enrollmentId') enrollmentId?: string,
+  ) { return this.svc.listDocuments(clientId, enrollmentId); }
 
   @Post('clients/:clientId/documents')
   createDocument(@Param('clientId') clientId: string, @Body() dto: CreateCfDocumentDto) { return this.svc.createDocument(clientId, dto); }
@@ -176,7 +202,10 @@ export class ClientflowController {
   // ─── Communications ─────────────────────────────────────────────────────────
 
   @Get('clients/:clientId/communications')
-  listCommunications(@Param('clientId') clientId: string) { return this.svc.listCommunications(clientId); }
+  listCommunications(
+    @Param('clientId') clientId: string,
+    @Query('enrollmentId') enrollmentId?: string,
+  ) { return this.svc.listCommunications(clientId, enrollmentId); }
 
   @Post('clients/:clientId/communications')
   createCommunication(@Param('clientId') clientId: string, @Body() dto: CreateCfCommunicationDto) { return this.svc.createCommunication(clientId, dto); }
@@ -184,7 +213,10 @@ export class ClientflowController {
   // ─── Final Reports ──────────────────────────────────────────────────────────
 
   @Get('clients/:clientId/final-reports')
-  listFinalReports(@Param('clientId') clientId: string) { return this.svc.listFinalReports(clientId); }
+  listFinalReports(
+    @Param('clientId') clientId: string,
+    @Query('enrollmentId') enrollmentId?: string,
+  ) { return this.svc.listFinalReports(clientId, enrollmentId); }
 
   @Post('clients/:clientId/final-reports')
   createFinalReport(@Param('clientId') clientId: string, @Body() dto: CreateCfFinalReportDto) { return this.svc.createFinalReport(clientId, dto); }
@@ -192,10 +224,16 @@ export class ClientflowController {
   // ─── Activity ────────────────────────────────────────────────────────────────
 
   @Get('activity')
-  listActivity(@Query('clientId') clientId?: string) { return this.svc.listActivity(clientId); }
+  listActivity(
+    @Query('clientId') clientId?: string,
+    @Query('enrollmentId') enrollmentId?: string,
+  ) { return this.svc.listActivity(clientId, enrollmentId); }
 
   @Get('clients/:clientId/activity')
-  listClientActivity(@Param('clientId') clientId: string) { return this.svc.listActivity(clientId); }
+  listClientActivity(
+    @Param('clientId') clientId: string,
+    @Query('enrollmentId') enrollmentId?: string,
+  ) { return this.svc.listActivity(clientId, enrollmentId); }
 
   @Post('activity')
   createActivity(@Body() dto: CreateCfActivityDto) { return this.svc.createActivity(dto); }

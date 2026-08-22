@@ -1,6 +1,7 @@
 import { IsString, IsOptional, IsBoolean, IsNumber } from 'class-validator';
 
 export class CreateCfTermsDto {
+  @IsOptional() @IsString() enrollmentId?: string;
   @IsString() programId!: string;
   @IsString() supportType!: string;
   @IsOptional() @IsNumber() fundingAmount?: number;

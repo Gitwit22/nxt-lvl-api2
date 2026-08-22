@@ -1,6 +1,7 @@
 import { IsString, IsOptional } from 'class-validator';
 
 export class CreateCfMonitoringDto {
+  @IsOptional() @IsString() enrollmentId?: string;
   @IsString() programId!: string;
   @IsString() type!: string;
   @IsString() dueDate!: string;

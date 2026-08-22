@@ -61,6 +61,34 @@ export class ClientflowService {
     if (!client) throw new NotFoundException('Client not found.');
   }
 
+  private async verifyEnrollmentScope(
+    enrollmentId: string | undefined,
+    clientId: string,
+    programId: string,
+    orgId: string,
+  ): Promise<void> {
+    if (!enrollmentId) return;
+    const enrollment = await this.verifyEnrollmentBelongsToClient(enrollmentId, clientId, orgId);
+    if (enrollment.programId !== programId) {
+      throw new BadRequestException('Enrollment does not match this client and program.');
+    }
+  }
+
+  private async verifyEnrollmentBelongsToClient(
+    enrollmentId: string,
+    clientId: string,
+    orgId: string,
+  ) {
+    const enrollment = await this.prisma.cfProgramEnrollment.findFirst({
+      where: { id: enrollmentId, clientId, organizationId: orgId },
+      select: { id: true, programId: true },
+    });
+    if (!enrollment) {
+      throw new BadRequestException('Enrollment does not match this client.');
+    }
+    return enrollment;
+  }
+
   // ─── Clients ────────────────────────────────────────────────────────────────
 
   async listClients(includeArchived = false) {
@@ -206,7 +234,10 @@ export class ClientflowService {
       data: {
         ...(dto.id && { id: dto.id }),
         organizationId: orgId,
-        programId: dto.programId,
+        programId: dto.programId ?? null,
+        scope: dto.scope ?? 'legacy',
+        version: dto.version ?? 1,
+        sortOrder: dto.sortOrder ?? 0,
         name: dto.name,
         description: dto.description ?? '',
         fields: (dto.fields ?? []) as Prisma.InputJsonValue,
@@ -226,6 +257,9 @@ export class ClientflowService {
       where: { id },
       data: {
         ...(dto.programId !== undefined && { programId: dto.programId }),
+        ...(dto.scope !== undefined && { scope: dto.scope }),
+        ...(dto.version !== undefined && { version: dto.version }),
+        ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.description !== undefined && { description: dto.description }),
         ...(dto.fields !== undefined && { fields: dto.fields as Prisma.InputJsonValue }),
@@ -239,10 +273,14 @@ export class ClientflowService {
 
   // ─── Form Assignments ────────────────────────────────────────────────────────
 
-  async listFormAssignments(clientId?: string) {
+  async listFormAssignments(clientId?: string, enrollmentId?: string) {
     const orgId = await this.getOrgId();
     return this.prisma.cfFormAssignment.findMany({
-      where: { organizationId: orgId, ...(clientId ? { clientId } : {}) },
+      where: {
+        organizationId: orgId,
+        ...(clientId ? { clientId } : {}),
+        ...(enrollmentId ? { enrollmentId } : {}),
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -254,6 +292,12 @@ export class ClientflowService {
       where: { id: dto.formId, organizationId: orgId },
     });
     if (!form) throw new NotFoundException('Form template not found.');
+    if (dto.enrollmentId) {
+      if (!form.programId) {
+        throw new BadRequestException('The Master Intake cannot be assigned to one enrollment.');
+      }
+      await this.verifyEnrollmentScope(dto.enrollmentId, dto.clientId, form.programId, orgId);
+    }
 
     const token = randomBytes(32).toString('hex');
     const secureLink = `${this.request.partition.appUrl}/s/${token}`;
@@ -261,6 +305,7 @@ export class ClientflowService {
       data: {
         organizationId: orgId,
         clientId: dto.clientId,
+        enrollmentId: dto.enrollmentId,
         formId: dto.formId,
         assignedUserId: dto.assignedUserId ?? null,
         completionMethod: dto.completionMethod,
@@ -335,6 +380,70 @@ export class ClientflowService {
     });
   }
 
+  // ─── Intake Submission History ─────────────────────────────────────────────
+
+  async listIntakeSubmissions(clientId?: string, programId?: string) {
+    const orgId = await this.getOrgId();
+    const programLinks = programId
+      ? await this.prisma.cfIntakeSubmissionProgram.findMany({
+          where: { organizationId: orgId, programId },
+          select: { intakeSubmissionId: true },
+        })
+      : [];
+    const submissionIds = programLinks.map(({ intakeSubmissionId }) => intakeSubmissionId);
+    if (programId && submissionIds.length === 0) return [];
+
+    const submissions = await this.prisma.cfIntakeSubmission.findMany({
+      where: {
+        organizationId: orgId,
+        ...(clientId ? { clientId } : {}),
+        ...(programId ? { id: { in: submissionIds } } : {}),
+      },
+      orderBy: { submittedAt: 'desc' },
+    });
+    const ids = submissions.map(({ id }) => id);
+    const clientIds = [...new Set(submissions.map(({ clientId: id }) => id))];
+    const [clients, links] = await Promise.all([
+      this.prisma.cfClient.findMany({
+        where: { organizationId: orgId, id: { in: clientIds } },
+        select: { id: true, businessName: true, primaryContactName: true, email: true },
+      }),
+      this.prisma.cfIntakeSubmissionProgram.findMany({
+        where: { organizationId: orgId, intakeSubmissionId: { in: ids } },
+      }),
+    ]);
+    const clientById = new Map(clients.map((client) => [client.id, client]));
+    return submissions.map((submission) => ({
+      ...submission,
+      client: clientById.get(submission.clientId) ?? null,
+      programs: links.filter((link) => link.intakeSubmissionId === submission.id),
+    }));
+  }
+
+  async getIntakeSubmission(id: string) {
+    const orgId = await this.getOrgId();
+    const submission = await this.prisma.cfIntakeSubmission.findFirst({
+      where: { id, organizationId: orgId },
+    });
+    if (!submission) throw new NotFoundException('Intake submission not found.');
+
+    const [client, assignment, snapshot, programs] = await Promise.all([
+      this.prisma.cfClient.findFirst({
+        where: { id: submission.clientId, organizationId: orgId },
+      }),
+      this.prisma.cfFormAssignment.findFirst({
+        where: { id: submission.formAssignmentId, organizationId: orgId },
+      }),
+      this.prisma.cfIntakeSubmissionSnapshot.findFirst({
+        where: { intakeSubmissionId: id, organizationId: orgId },
+      }),
+      this.prisma.cfIntakeSubmissionProgram.findMany({
+        where: { intakeSubmissionId: id, organizationId: orgId },
+      }),
+    ]);
+    return { ...submission, client, assignment, snapshot, programs };
+  }
+
   // ─── Global org-wide lists ─────────────────────────────────────────────────
 
   async listAllTerms() {
@@ -369,18 +478,23 @@ export class ClientflowService {
 
   // ─── Terms ──────────────────────────────────────────────────────────────────
 
-  async listTerms(clientId: string) {
+  async listTerms(clientId: string, enrollmentId?: string) {
     const orgId = await this.getOrgId();
-    return this.prisma.cfTerms.findMany({ where: { clientId, organizationId: orgId }, orderBy: { createdAt: 'desc' } });
+    return this.prisma.cfTerms.findMany({
+      where: { clientId, organizationId: orgId, ...(enrollmentId && { enrollmentId }) },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   async createTerms(clientId: string, dto: CreateCfTermsDto) {
     const orgId = await this.getOrgId();
     await this.verifyClientBelongsToOrg(clientId, orgId);
+    await this.verifyEnrollmentScope(dto.enrollmentId, clientId, dto.programId, orgId);
     return this.prisma.cfTerms.create({
       data: {
         organizationId: orgId,
         clientId,
+        enrollmentId: dto.enrollmentId,
         programId: dto.programId,
         supportType: dto.supportType,
         fundingAmount: dto.fundingAmount ?? 0,
@@ -412,10 +526,10 @@ export class ClientflowService {
 
   // ─── Monitoring ─────────────────────────────────────────────────────────────
 
-  async listMonitoring(clientId: string) {
+  async listMonitoring(clientId: string, enrollmentId?: string) {
     const orgId = await this.getOrgId();
     return this.prisma.cfMonitoringItem.findMany({
-      where: { clientId, organizationId: orgId },
+      where: { clientId, organizationId: orgId, ...(enrollmentId && { enrollmentId }) },
       orderBy: { dueDate: 'asc' },
     });
   }
@@ -423,10 +537,12 @@ export class ClientflowService {
   async createMonitoringItem(clientId: string, dto: CreateCfMonitoringDto) {
     const orgId = await this.getOrgId();
     await this.verifyClientBelongsToOrg(clientId, orgId);
+    await this.verifyEnrollmentScope(dto.enrollmentId, clientId, dto.programId, orgId);
     return this.prisma.cfMonitoringItem.create({
       data: {
         organizationId: orgId,
         clientId,
+        enrollmentId: dto.enrollmentId,
         programId: dto.programId,
         type: dto.type,
         dueDate: new Date(dto.dueDate),
@@ -454,18 +570,23 @@ export class ClientflowService {
 
   // ─── Contracts ──────────────────────────────────────────────────────────────
 
-  async listContracts(clientId: string) {
+  async listContracts(clientId: string, enrollmentId?: string) {
     const orgId = await this.getOrgId();
-    return this.prisma.cfContract.findMany({ where: { clientId, organizationId: orgId }, orderBy: { createdAt: 'desc' } });
+    return this.prisma.cfContract.findMany({
+      where: { clientId, organizationId: orgId, ...(enrollmentId && { enrollmentId }) },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   async createContract(clientId: string, dto: CreateCfContractDto) {
     const orgId = await this.getOrgId();
     await this.verifyClientBelongsToOrg(clientId, orgId);
+    await this.verifyEnrollmentScope(dto.enrollmentId, clientId, dto.programId, orgId);
     return this.prisma.cfContract.create({
       data: {
         organizationId: orgId,
         clientId,
+        enrollmentId: dto.enrollmentId,
         programId: dto.programId,
         termsId: dto.termsId,
         contractType: dto.contractType,
@@ -492,18 +613,25 @@ export class ClientflowService {
 
   // ─── Documents ──────────────────────────────────────────────────────────────
 
-  async listDocuments(clientId: string) {
+  async listDocuments(clientId: string, enrollmentId?: string) {
     const orgId = await this.getOrgId();
-    return this.prisma.cfDocument.findMany({ where: { clientId, organizationId: orgId }, orderBy: { uploadedAt: 'desc' } });
+    return this.prisma.cfDocument.findMany({
+      where: { clientId, organizationId: orgId, ...(enrollmentId && { enrollmentId }) },
+      orderBy: { uploadedAt: 'desc' },
+    });
   }
 
   async createDocument(clientId: string, dto: CreateCfDocumentDto) {
     const orgId = await this.getOrgId();
     await this.verifyClientBelongsToOrg(clientId, orgId);
+    if (dto.enrollmentId) {
+      await this.verifyEnrollmentBelongsToClient(dto.enrollmentId, clientId, orgId);
+    }
     return this.prisma.cfDocument.create({
       data: {
         organizationId: orgId,
         clientId,
+        enrollmentId: dto.enrollmentId,
         name: dto.name,
         type: dto.type,
         url: dto.url,
@@ -515,18 +643,25 @@ export class ClientflowService {
 
   // ─── Communications ─────────────────────────────────────────────────────────
 
-  async listCommunications(clientId: string) {
+  async listCommunications(clientId: string, enrollmentId?: string) {
     const orgId = await this.getOrgId();
-    return this.prisma.cfCommunication.findMany({ where: { clientId, organizationId: orgId }, orderBy: { date: 'desc' } });
+    return this.prisma.cfCommunication.findMany({
+      where: { clientId, organizationId: orgId, ...(enrollmentId && { enrollmentId }) },
+      orderBy: { date: 'desc' },
+    });
   }
 
   async createCommunication(clientId: string, dto: CreateCfCommunicationDto) {
     const orgId = await this.getOrgId();
     await this.verifyClientBelongsToOrg(clientId, orgId);
+    if (dto.enrollmentId) {
+      await this.verifyEnrollmentBelongsToClient(dto.enrollmentId, clientId, orgId);
+    }
     return this.prisma.cfCommunication.create({
       data: {
         organizationId: orgId,
         clientId,
+        enrollmentId: dto.enrollmentId,
         type: dto.type,
         direction: dto.direction,
         subject: dto.subject,
@@ -539,18 +674,23 @@ export class ClientflowService {
 
   // ─── Final Reports ──────────────────────────────────────────────────────────
 
-  async listFinalReports(clientId: string) {
+  async listFinalReports(clientId: string, enrollmentId?: string) {
     const orgId = await this.getOrgId();
-    return this.prisma.cfFinalReport.findMany({ where: { clientId, organizationId: orgId }, orderBy: { createdAt: 'desc' } });
+    return this.prisma.cfFinalReport.findMany({
+      where: { clientId, organizationId: orgId, ...(enrollmentId && { enrollmentId }) },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   async createFinalReport(clientId: string, dto: CreateCfFinalReportDto) {
     const orgId = await this.getOrgId();
     await this.verifyClientBelongsToOrg(clientId, orgId);
+    await this.verifyEnrollmentScope(dto.enrollmentId, clientId, dto.programId, orgId);
     return this.prisma.cfFinalReport.create({
       data: {
         organizationId: orgId,
         clientId,
+        enrollmentId: dto.enrollmentId,
         programId: dto.programId,
         startDate: dto.startDate,
         endDate: dto.endDate,
@@ -570,10 +710,14 @@ export class ClientflowService {
 
   // ─── Activity Logs ──────────────────────────────────────────────────────────
 
-  async listActivity(clientId?: string) {
+  async listActivity(clientId?: string, enrollmentId?: string) {
     const orgId = await this.getOrgId();
     return this.prisma.cfActivityLog.findMany({
-      where: { organizationId: orgId, ...(clientId ? { clientId } : {}) },
+      where: {
+        organizationId: orgId,
+        ...(clientId ? { clientId } : {}),
+        ...(enrollmentId ? { enrollmentId } : {}),
+      },
       orderBy: { timestamp: 'desc' },
       take: 200,
     });
@@ -581,10 +725,15 @@ export class ClientflowService {
 
   async createActivity(dto: CreateCfActivityDto) {
     const orgId = await this.getOrgId();
+    await this.verifyClientBelongsToOrg(dto.clientId, orgId);
+    if (dto.enrollmentId) {
+      await this.verifyEnrollmentBelongsToClient(dto.enrollmentId, dto.clientId, orgId);
+    }
     return this.prisma.cfActivityLog.create({
       data: {
         organizationId: orgId,
         clientId: dto.clientId,
+        enrollmentId: dto.enrollmentId,
         action: dto.action,
         description: dto.description,
         user: dto.user,
@@ -704,7 +853,12 @@ export class ClientflowService {
           this.prisma.cfFormTemplate.upsert({
             where: { id: t['id'] as string },
             create: { ...(t as any), organizationId: orgId, fields: (t['fields'] ?? []) as Prisma.InputJsonValue, emailTemplate: (t['emailTemplate'] as string) ?? '' } as any,
-            update: {},
+            update: {
+              programId: (t['programId'] as string | null | undefined) ?? null,
+              scope: (t['scope'] as string | undefined) ?? 'legacy',
+              version: (t['version'] as number | undefined) ?? 1,
+              sortOrder: (t['sortOrder'] as number | undefined) ?? 0,
+            },
           }).catch(logError('formTemplate', t['id'])),
         ),
       );

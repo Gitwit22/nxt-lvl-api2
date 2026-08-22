@@ -2,6 +2,7 @@ import { IsString, IsOptional, IsBoolean, IsNumber } from 'class-validator';
 
 export class CreateCfFormAssignmentDto {
   @IsString() clientId!: string;
+  @IsOptional() @IsString() enrollmentId?: string;
   @IsString() formId!: string;
   @IsOptional() @IsString() assignedUserId?: string | null;
   @IsOptional() @IsString() completionMethod?: string;

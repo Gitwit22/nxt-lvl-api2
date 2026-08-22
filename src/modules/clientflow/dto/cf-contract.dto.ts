@@ -1,6 +1,7 @@
 import { IsString, IsOptional } from 'class-validator';
 
 export class CreateCfContractDto {
+  @IsOptional() @IsString() enrollmentId?: string;
   @IsString() programId!: string;
   @IsOptional() @IsString() termsId?: string;
   @IsString() contractType!: string;
