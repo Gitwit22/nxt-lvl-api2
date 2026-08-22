@@ -1,9 +1,10 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, Scope, UnauthorizedException } from '@nestjs/common';
 import { REQUEST } from '@nestjs/core';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/clientflow-client';
 import { compare } from 'bcrypt';
 import { randomBytes } from 'crypto';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
+import { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCfClientDto } from './dto/create-cf-client.dto';
 import { UpdateCfClientDto } from './dto/update-cf-client.dto';
@@ -29,7 +30,8 @@ export class ClientflowService {
 
   constructor(
     @Inject(REQUEST) private readonly request: PartitionRequest,
-    private readonly prisma: PrismaService,
+    private readonly prisma: ClientflowPrismaService,
+    private readonly primaryPrisma: PrismaService,
     private readonly notifications: NotificationsService,
   ) {}
 
@@ -47,7 +49,7 @@ export class ClientflowService {
     const adminId = this.request.headers['x-admin-id'] as string | undefined;
     if (!adminId) throw new NotFoundException('Admin context missing.');
 
-    const admin = await this.prisma.adminUser.findUnique({ where: { id: adminId } });
+    const admin = await this.primaryPrisma.adminUser.findUnique({ where: { id: adminId } });
     if (!admin) throw new NotFoundException('Admin not found.');
 
     this._orgId = admin.organizationId;
@@ -291,9 +293,11 @@ export class ClientflowService {
     if (!client) throw new NotFoundException('Client not found.');
     if (!form) throw new NotFoundException('Form template not found.');
 
-    const program = await this.prisma.cfProgram.findFirst({
-      where: { id: form.programId, organizationId: orgId },
-    });
+    const program = form.programId
+      ? await this.prisma.cfProgram.findFirst({
+          where: { id: form.programId, organizationId: orgId },
+        })
+      : null;
     await this.notifications.sendFormLink({
       to: assignment.recipientEmail ?? client.email,
       contactName: client.primaryContactName,
@@ -593,7 +597,7 @@ export class ClientflowService {
 
   async getDemoStatus() {
     const orgId = await this.getOrgId();
-    const organization = await this.prisma.organization.findUnique({
+    const organization = await this.primaryPrisma.organization.findUnique({
       where: { id: orgId },
       select: { liveMode: true, demoRemovedAt: true, principalAdminId: true },
     });
@@ -615,7 +619,7 @@ export class ClientflowService {
     activity?: unknown[];
   }) {
     const orgId = await this.getOrgId();
-    const organization = await this.prisma.organization.findUnique({
+    const organization = await this.primaryPrisma.organization.findUnique({
       where: { id: orgId },
     }) as unknown as LiveOrganizationState | null;
     if (!organization) throw new NotFoundException('Organization not found.');
@@ -786,7 +790,7 @@ export class ClientflowService {
       throw new BadRequestException('Type REMOVE DEMO DATA to confirm.');
     }
 
-    const actor = await this.prisma.adminUser.findFirst({
+    const actor = await this.primaryPrisma.adminUser.findFirst({
       where: { id: adminId, organizationId: orgId },
     });
     if (!actor || !actor.isActive) throw new ForbiddenException('An active organization administrator is required.');
@@ -797,22 +801,36 @@ export class ClientflowService {
       throw new UnauthorizedException('Current password is incorrect.');
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const organization = await tx.organization.findUnique({
-        where: { id: orgId },
-      }) as unknown as LiveOrganizationState | null;
-      if (!organization) throw new NotFoundException('Organization not found.');
-      if (organization.liveMode) {
-        return {
-          liveMode: true,
-          demoRemovedAt: organization.demoRemovedAt,
-          principalAdminId: organization.principalAdminId,
-          removed: {},
-        };
-      }
-      const revokedAt = new Date();
+    const organization = await this.primaryPrisma.organization.findUnique({
+      where: { id: orgId },
+    }) as unknown as LiveOrganizationState | null;
+    if (!organization) throw new NotFoundException('Organization not found.');
 
+    const removed = await this.prisma.$transaction(async (tx) => {
       const demoWhere = { organizationId: orgId, isDemo: true };
+      const [demoAssignments, demoSubmissions, demoEnrollments] = await Promise.all([
+        tx.cfFormAssignment.findMany({ where: demoWhere, select: { id: true } }),
+        tx.cfIntakeSubmission.findMany({ where: demoWhere, select: { id: true } }),
+        tx.cfProgramEnrollment.findMany({ where: demoWhere, select: { id: true } }),
+      ]);
+      const demoAssignmentIds = demoAssignments.map(({ id }) => id);
+      const demoSubmissionIds = demoSubmissions.map(({ id }) => id);
+      const demoEnrollmentIds = demoEnrollments.map(({ id }) => id);
+
+      const removedSubmissionPrograms = await tx.cfIntakeSubmissionProgram.deleteMany({
+        where: { organizationId: orgId, intakeSubmissionId: { in: demoSubmissionIds } },
+      });
+      const removedSubmissionSnapshots = await tx.cfIntakeSubmissionSnapshot.deleteMany({
+        where: { organizationId: orgId, intakeSubmissionId: { in: demoSubmissionIds } },
+      });
+      const removedRenderSessions = await tx.cfIntakeRenderSession.deleteMany({
+        where: { organizationId: orgId, formAssignmentId: { in: demoAssignmentIds } },
+      });
+      const removedSubmissions = await tx.cfIntakeSubmission.deleteMany({ where: demoWhere });
+      const removedEnrollmentHistory = await tx.cfEnrollmentStatusHistory.deleteMany({
+        where: { organizationId: orgId, enrollmentId: { in: demoEnrollmentIds } },
+      });
+      const removedTasks = await tx.cfTask.deleteMany({ where: demoWhere });
       const removedActivity = await tx.cfActivityLog.deleteMany({ where: demoWhere });
       const removedCommunications = await tx.cfCommunication.deleteMany({ where: demoWhere });
       const removedDocuments = await tx.cfDocument.deleteMany({ where: demoWhere });
@@ -821,16 +839,43 @@ export class ClientflowService {
       const removedMonitoring = await tx.cfMonitoringItem.deleteMany({ where: demoWhere });
       const removedTerms = await tx.cfTerms.deleteMany({ where: demoWhere });
       const removedAssignments = await tx.cfFormAssignment.deleteMany({ where: demoWhere });
+      const removedEnrollments = await tx.cfProgramEnrollment.deleteMany({ where: demoWhere });
       const removedClients = await tx.cfClient.deleteMany({ where: demoWhere });
 
-      const updatedOrganization = await tx.organization.update({
+      return {
+        clients: removedClients.count,
+        enrollments: removedEnrollments.count,
+        enrollmentHistory: removedEnrollmentHistory.count,
+        intakeSubmissions: removedSubmissions.count,
+        intakeSubmissionSnapshots: removedSubmissionSnapshots.count,
+        intakeSubmissionPrograms: removedSubmissionPrograms.count,
+        intakeRenderSessions: removedRenderSessions.count,
+        tasks: removedTasks.count,
+        formAssignments: removedAssignments.count,
+        terms: removedTerms.count,
+        monitoring: removedMonitoring.count,
+        contracts: removedContracts.count,
+        documents: removedDocuments.count,
+        communications: removedCommunications.count,
+        finalReports: removedReports.count,
+        activity: removedActivity.count,
+      };
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      maxWait: 5_000,
+      timeout: 15_000,
+    });
+
+    const revokedAt = organization.demoRemovedAt ?? new Date();
+    const updatedOrganization = await this.primaryPrisma.$transaction(async (tx) => {
+      const current = await tx.organization.findUnique({ where: { id: orgId } });
+      if (!current) throw new NotFoundException('Organization not found.');
+      if (current.liveMode) return current;
+
+      const updated = await tx.organization.update({
         where: { id: orgId },
-        data: {
-          liveMode: true,
-          demoRemovedAt: revokedAt,
-          principalAdminId: adminId,
-        },
-      }) as unknown as LiveOrganizationState;
+        data: { liveMode: true, demoRemovedAt: revokedAt, principalAdminId: adminId },
+      });
       await tx.auditLog.create({
         data: {
           organizationId: orgId,
@@ -845,27 +890,14 @@ export class ClientflowService {
           },
         },
       });
-
-      return {
-        liveMode: true,
-        demoRemovedAt: updatedOrganization.demoRemovedAt,
-        principalAdminId: adminId,
-        removed: {
-          clients: removedClients.count,
-          formAssignments: removedAssignments.count,
-          terms: removedTerms.count,
-          monitoring: removedMonitoring.count,
-          contracts: removedContracts.count,
-          documents: removedDocuments.count,
-          communications: removedCommunications.count,
-          finalReports: removedReports.count,
-          activity: removedActivity.count,
-        },
-      };
-    }, {
-      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      maxWait: 5_000,
-      timeout: 15_000,
+      return updated;
     });
+
+    return {
+      liveMode: true,
+      demoRemovedAt: updatedOrganization.demoRemovedAt,
+      principalAdminId: adminId,
+      removed,
+    };
   }
 }

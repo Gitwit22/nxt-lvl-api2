@@ -4,10 +4,11 @@ import { ClientflowService } from './clientflow.service';
 import { PublicFormController } from './public-form.controller';
 import { PublicFormService } from './public-form.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { EnrollmentService } from './enrollment.service';
 
 @Module({
   imports: [NotificationsModule],
   controllers: [ClientflowController, PublicFormController],
-  providers: [ClientflowService, PublicFormService],
+  providers: [ClientflowService, EnrollmentService, PublicFormService],
 })
 export class ClientflowModule {}

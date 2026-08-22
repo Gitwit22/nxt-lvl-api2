@@ -23,11 +23,16 @@ import {
   CreateCfFinalReportDto,
   CreateCfActivityDto,
 } from './dto/cf-records.dto';
+import { CreateCfEnrollmentDto, UpdateCfEnrollmentDto } from './dto/cf-enrollment.dto';
+import { EnrollmentService } from './enrollment.service';
 
 @Controller('admin/cf')
 @UseGuards(AdminJwtGuard)
 export class ClientflowController {
-  constructor(private readonly svc: ClientflowService) {}
+  constructor(
+    private readonly svc: ClientflowService,
+    private readonly enrollments: EnrollmentService,
+  ) {}
 
   // ─── Clients ────────────────────────────────────────────────────────────────
 
@@ -55,6 +60,30 @@ export class ClientflowController {
 
   @Patch('programs/:id')
   updateProgram(@Param('id') id: string, @Body() dto: UpdateCfProgramDto) { return this.svc.updateProgram(id, dto); }
+
+  // ─── Program Enrollments ──────────────────────────────────────────────────
+
+  @Get('enrollments')
+  listEnrollments(
+    @Query('clientId') clientId?: string,
+    @Query('programId') programId?: string,
+  ) {
+    return this.enrollments.list(clientId, programId);
+  }
+
+  @Get('enrollments/:id')
+  getEnrollment(@Param('id') id: string) { return this.enrollments.get(id); }
+
+  @Get('enrollments/:id/history')
+  getEnrollmentHistory(@Param('id') id: string) { return this.enrollments.history(id); }
+
+  @Post('enrollments')
+  createEnrollment(@Body() dto: CreateCfEnrollmentDto) { return this.enrollments.create(dto); }
+
+  @Patch('enrollments/:id')
+  updateEnrollment(@Param('id') id: string, @Body() dto: UpdateCfEnrollmentDto) {
+    return this.enrollments.update(id, dto);
+  }
 
   // ─── Form Templates ─────────────────────────────────────────────────────────
 

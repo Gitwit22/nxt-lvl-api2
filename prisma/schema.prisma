@@ -147,11 +147,11 @@ model Business {
   createdAt                   DateTime              @default(now())
   updatedAt                   DateTime              @updatedAt
 
-  program            Program               @relation(fields: [programId], references: [id], onDelete: Cascade)
-  contacts           BusinessContact[]
-  changeRequests     BusinessChangeRequest[]
-  editTokens         BusinessEditToken[]
-  fileAssets         FileAsset[]
+  program        Program                 @relation(fields: [programId], references: [id], onDelete: Cascade)
+  contacts       BusinessContact[]
+  changeRequests BusinessChangeRequest[]
+  editTokens     BusinessEditToken[]
+  fileAssets     FileAsset[]
 
   @@unique([programId, slug])
   @@index([programId, status])
@@ -159,100 +159,100 @@ model Business {
 }
 
 model BusinessContact {
-  id          String    @id @default(cuid())
-  businessId  String
-  firstName   String
-  lastName    String?
-  title       String?
-  email       String?
-  phone       String?
-  isPrimary   Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id         String   @id @default(cuid())
+  businessId String
+  firstName  String
+  lastName   String?
+  title      String?
+  email      String?
+  phone      String?
+  isPrimary  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@index([businessId])
 }
 
 model BusinessCategory {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   programId   String
   name        String
   slug        String
   description String?
-  isActive    Boolean   @default(true)
-  sortOrder   Int       @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  program     Program   @relation(fields: [programId], references: [id], onDelete: Cascade)
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
 
   @@unique([programId, slug])
   @@index([programId, isActive])
 }
 
 model BusinessSubmission {
-  id                String            @id @default(cuid())
+  id                String           @id @default(cuid())
   programId         String
   payload           Json
   submittedByName   String?
   submittedByEmail  String?
   submittedByPhone  String?
-  status            SubmissionStatus  @default(pending_review)
+  status            SubmissionStatus @default(pending_review)
   reviewNotes       String?
   reviewedAt        DateTime?
   reviewedByAdminId String?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
-  program           Program           @relation(fields: [programId], references: [id], onDelete: Cascade)
-  reviewedByAdmin   AdminUser?        @relation("SubmissionReviewedBy", fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
+  program         Program    @relation(fields: [programId], references: [id], onDelete: Cascade)
+  reviewedByAdmin AdminUser? @relation("SubmissionReviewedBy", fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
 
   @@index([programId, status])
 }
 
 model BusinessChangeRequest {
-  id                String               @id @default(cuid())
+  id                String              @id @default(cuid())
   businessId        String
   payload           Json
   requestedByName   String?
   requestedByEmail  String?
-  status            ChangeRequestStatus  @default(pending_review)
+  status            ChangeRequestStatus @default(pending_review)
   reviewNotes       String?
   reviewedAt        DateTime?
   reviewedByAdminId String?
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
 
-  business          Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  reviewedByAdmin   AdminUser?           @relation("ChangeRequestReviewedBy", fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
+  business        Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  reviewedByAdmin AdminUser? @relation("ChangeRequestReviewedBy", fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
 
   @@index([businessId, status])
 }
 
 model BusinessEditToken {
-  id           String    @id @default(cuid())
-  businessId   String
-  tokenHash    String
-  purpose      EditTokenPurpose @default(BUSINESS_UPDATE)
+  id                String           @id @default(cuid())
+  businessId        String
+  tokenHash         String
+  purpose           EditTokenPurpose @default(BUSINESS_UPDATE)
   requestedForEmail String?
   requestedByEmail  String?
-  source       String?
-  ipAddress    String?
-  userAgent    String?
-  expiresAt    DateTime
-  usedAt       DateTime?
-  createdAt    DateTime  @default(now())
+  source            String?
+  ipAddress         String?
+  userAgent         String?
+  expiresAt         DateTime
+  usedAt            DateTime?
+  createdAt         DateTime         @default(now())
 
-  business     Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@index([businessId])
   @@index([expiresAt])
 }
 
 model AuditLog {
-  id             String       @id @default(cuid())
+  id             String      @id @default(cuid())
   organizationId String?
   programId      String?
   actorAdminId   String?
@@ -262,10 +262,10 @@ model AuditLog {
   beforeData     Json?
   afterData      Json?
   metadata       Json?
-  createdAt      DateTime     @default(now())
+  createdAt      DateTime    @default(now())
 
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  actorAdmin     AdminUser?    @relation(fields: [actorAdminId], references: [id], onDelete: SetNull)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  actorAdmin   AdminUser?     @relation(fields: [actorAdminId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([programId])
@@ -274,49 +274,49 @@ model AuditLog {
 }
 
 model FileAsset {
-  id             String    @id @default(cuid())
-  programId      String
-  businessId     String?
-  uploadedById   String?
+  id              String   @id @default(cuid())
+  programId       String
+  businessId      String?
+  uploadedById    String?
   storageProvider String
-  bucket         String
-  objectKey      String
-  mimeType       String
-  sizeBytes      Int
-  publicUrl      String?
-  metadata       Json?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  bucket          String
+  objectKey       String
+  mimeType        String
+  sizeBytes       Int
+  publicUrl       String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  program        Program   @relation(fields: [programId], references: [id], onDelete: Cascade)
-  business       Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
-  uploadedBy     AdminUser? @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  program    Program    @relation(fields: [programId], references: [id], onDelete: Cascade)
+  business   Business?  @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  uploadedBy AdminUser? @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
 
   @@index([programId])
   @@index([businessId])
 }
 
 model AdminUser {
-  id                       String                 @id @default(cuid())
-  organizationId           String
-  email                    String                 @unique
-  passwordHash             String
-  firstName                String?
-  lastName                 String?
-  role                     AdminRole              @default(reviewer)
-  isActive                 Boolean                @default(true)
-  lastLoginAt              DateTime?
-  createdAt                DateTime               @default(now())
-  updatedAt                DateTime               @updatedAt
+  id             String    @id @default(cuid())
+  organizationId String
+  email          String    @unique
+  passwordHash   String
+  firstName      String?
+  lastName       String?
+  role           AdminRole @default(reviewer)
+  isActive       Boolean   @default(true)
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  organization             Organization           @relation("OrganizationMembers", fields: [organizationId], references: [id], onDelete: Cascade)
-  principalOf              Organization?          @relation("OrganizationPrincipal")
-  reviewedSubmissions      BusinessSubmission[]   @relation("SubmissionReviewedBy")
-  reviewedChangeRequests   BusinessChangeRequest[] @relation("ChangeRequestReviewedBy")
-  uploadedFiles            FileAsset[]
-  auditLogs                AuditLog[]
-  invitation               AdminInvitation?
-  sessions                 AuthSession[]
+  organization           Organization            @relation("OrganizationMembers", fields: [organizationId], references: [id], onDelete: Cascade)
+  principalOf            Organization?           @relation("OrganizationPrincipal")
+  reviewedSubmissions    BusinessSubmission[]    @relation("SubmissionReviewedBy")
+  reviewedChangeRequests BusinessChangeRequest[] @relation("ChangeRequestReviewedBy")
+  uploadedFiles          FileAsset[]
+  auditLogs              AuditLog[]
+  invitation             AdminInvitation?
+  sessions               AuthSession[]
 
   @@index([organizationId, role])
 }
@@ -330,7 +330,7 @@ model AdminInvitation {
   revokedAt   DateTime?
   createdAt   DateTime  @default(now())
 
-  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  adminUser AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
 
   @@index([tokenHash])
 }
@@ -343,7 +343,7 @@ model AuthSession {
   revokedAt   DateTime?
   createdAt   DateTime  @default(now())
 
-  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  adminUser AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
 
   @@index([adminUserId, revokedAt])
   @@index([expiresAt])
@@ -366,279 +366,30 @@ model StudioCoreState {
 }
 
 model ClipMagicState {
-  id          String                  @id @default(cuid())
-  workspaceId String                  @unique
+  id          String               @id @default(cuid())
+  workspaceId String               @unique
   state       Json
   musicFiles  ClipMagicMusicFile[]
-  createdAt   DateTime                @default(now())
-  updatedAt   DateTime                @updatedAt
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
 }
 
 model ClipMagicMusicFile {
-  id          String          @id @default(cuid())
+  id          String   @id @default(cuid())
   workspaceId String
   trackId     String
   fileName    String
-  mimeType    String          @default("audio/mpeg")
+  mimeType    String   @default("audio/mpeg")
   fileSize    Int
-  duration    Int             @default(150)
-  bpm         Int             @default(100)
-  mood        String          @default("Custom")
-  dataUrl     String          @db.Text
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  
-  state       ClipMagicState  @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
-  
+  duration    Int      @default(150)
+  bpm         Int      @default(100)
+  mood        String   @default("Custom")
+  dataUrl     String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  state ClipMagicState @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+
   @@unique([workspaceId, trackId])
   @@index([workspaceId])
-}
-
-// ─── ClientFlow CRM Models ────────────────────────────────────────────────────
-
-model CfClient {
-  id                 String    @id @default(cuid())
-  organizationId     String
-  businessName       String
-  primaryContactName String
-  email              String
-  phone              String
-  website            String?
-  socialLinks        Json      @default("[]")
-  programId          String?
-  status             String    @default("New Intake")
-  profileType        String?
-  relationshipType   String?
-  lifecycleStatus    String?
-  assignedStaff      String
-  assignedUserId     String?
-  intakeSource       String    @default("admin_created")
-  source             String?
-  nextFollowUpDate   DateTime?
-  convertedAt        DateTime?
-  isDemo             Boolean   @default(false)
-  isArchived         Boolean   @default(false)
-  archiveReason      String?
-  finalStatus        String?
-  archivedAt         DateTime?
-  intake             Json
-  snapchat           Json?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-
-  @@index([organizationId])
-  @@index([organizationId, isDemo])
-  @@index([organizationId, isArchived])
-}
-
-model CfProgram {
-  id                         String   @id @default(cuid())
-  organizationId             String
-  name                       String
-  description                String
-  isActive                   Boolean  @default(true)
-  defaultFormTemplateId      String
-  defaultMonitoringFrequency String
-  defaultContractTemplateId  String
-  defaultWorkflow            Json     @default("[]")
-  requiredDocuments          Json     @default("[]")
-  statusPipeline             Json     @default("[]")
-  createdAt                  DateTime @default(now())
-  updatedAt                  DateTime @updatedAt
-
-  @@index([organizationId])
-}
-
-model CfFormTemplate {
-  id            String   @id @default(cuid())
-  organizationId String
-  programId     String
-  name          String
-  description   String
-  fields        Json     @default("[]")
-  emailTemplate String   @db.Text
-  internalNotes String?
-  dueInDays     Int      @default(7)
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@index([organizationId])
-}
-
-model CfFormAssignment {
-  id               String    @id @default(cuid())
-  organizationId   String
-  clientId         String
-  formId           String
-  assignedUserId   String?
-  completionMethod String?
-  deliveryMethod   String?
-  recipientEmail   String?
-  recipientPhone   String?
-  status           String    @default("draft")
-  dueAt            DateTime?
-  sentAt           DateTime?
-  openedAt         DateTime?
-  startedAt        DateTime?
-  submittedAt      DateTime?
-  cancelledAt      DateTime?
-  dueDate          String?
-  secureLink       String?
-  secureLinkToken  String?   @unique
-  responses        Json?
-  editHistory      Json?
-  createdByUserId  String?
-  isDemo           Boolean   @default(false)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-
-  @@index([organizationId])
-  @@index([organizationId, isDemo])
-  @@index([organizationId, clientId])
-}
-
-model CfTerms {
-  id                   String   @id @default(cuid())
-  organizationId       String
-  clientId             String
-  programId            String
-  supportType          String
-  fundingAmount        Float    @default(0)
-  resourceDescription  String
-  grantAmount          Float    @default(0)
-  loanAmount           Float    @default(0)
-  investmentAmount     Float    @default(0)
-  forgivableAmount     Float    @default(0)
-  repaymentRequired    Boolean  @default(false)
-  repaymentSchedule    String
-  interestDescription  String
-  milestones           String
-  reportingRequirements String
-  startDate            String
-  endDate              String
-  monitoringFrequency  String
-  specialConditions    String
-  approvalStatus       String   @default("Pending")
-  isDemo               Boolean  @default(false)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-
-  @@index([organizationId, isDemo])
-  @@index([organizationId, clientId])
-}
-
-model CfMonitoringItem {
-  id             String    @id @default(cuid())
-  organizationId String
-  clientId       String
-  programId      String
-  type           String
-  dueDate        DateTime
-  status         String    @default("Scheduled")
-  assignedStaff  String
-  notes          String    @default("")
-  completedAt    DateTime?
-  isDemo         Boolean   @default(false)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  @@index([organizationId])
-  @@index([organizationId, isDemo])
-  @@index([organizationId, clientId])
-}
-
-model CfContract {
-  id             String    @id @default(cuid())
-  organizationId String
-  clientId       String
-  programId      String
-  termsId        String?
-  contractType   String
-  status         String    @default("Draft")
-  content        String    @db.Text
-  sentAt         DateTime?
-  signedAt       DateTime?
-  isDemo         Boolean   @default(false)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  @@index([organizationId])
-  @@index([organizationId, isDemo])
-  @@index([organizationId, clientId])
-}
-
-model CfDocument {
-  id             String   @id @default(cuid())
-  organizationId String
-  clientId       String
-  name           String
-  type           String
-  url            String
-  uploadedAt     DateTime @default(now())
-  uploadedBy     String
-  isDemo         Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  @@index([organizationId, isDemo])
-  @@index([organizationId, clientId])
-}
-
-model CfCommunication {
-  id             String   @id @default(cuid())
-  organizationId String
-  clientId       String
-  type           String
-  direction      String
-  subject        String
-  notes          String   @default("")
-  date           DateTime
-  staffMember    String
-  isDemo         Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  @@index([organizationId, isDemo])
-  @@index([organizationId, clientId])
-}
-
-model CfFinalReport {
-  id                    String   @id @default(cuid())
-  organizationId        String
-  clientId              String
-  programId             String
-  startDate             String
-  endDate               String
-  originalNeed          String
-  supportProvided       String
-  fundingProvided       String
-  milestonesCompleted   String
-  resultsAchieved       String
-  issuesEncountered     String
-  staffComments         String
-  clientOutcome         String
-  recommendedNextSteps  String
-  archiveDecision       String
-  isDemo                Boolean  @default(false)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-
-  @@index([organizationId, isDemo])
-  @@index([organizationId, clientId])
-}
-
-model CfActivityLog {
-  id             String   @id @default(cuid())
-  organizationId String
-  clientId       String
-  action         String
-  description    String
-  user           String
-  timestamp      DateTime @default(now())
-  isDemo         Boolean  @default(false)
-
-  @@index([organizationId])
-  @@index([organizationId, isDemo])
-  @@index([organizationId, clientId])
 }
