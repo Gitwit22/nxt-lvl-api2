@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { CfEnrollmentStatus, Prisma } from '@prisma/clientflow-client';
+import { CfEnrollmentStatus, Prisma } from '../../generated/clientflow';
 import { createHash, randomBytes } from 'crypto';
 import { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
 import { PublicFormResponseValue, SubmitPublicFormDto } from './dto/submit-public-form.dto';

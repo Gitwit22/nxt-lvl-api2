@@ -1,6 +1,6 @@
 import { Inject, Injectable, NotFoundException, Scope } from '@nestjs/common';
 import { REQUEST } from '@nestjs/core';
-import { CfEnrollmentStatus, Prisma } from '@prisma/clientflow-client';
+import { CfEnrollmentStatus, Prisma } from '../../generated/clientflow';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 import { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
 import { PrismaService } from '../../prisma/prisma.service';

@@ -3,7 +3,7 @@ import {
   CfEnrollmentStatus,
   Prisma,
   PrismaClient as TargetPrismaClient,
-} from '@prisma/clientflow-client';
+} from '../src/generated/clientflow';
 import { createHash } from 'crypto';
 
 type Row = Record<string, unknown> & { id: string };

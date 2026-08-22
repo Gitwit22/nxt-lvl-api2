@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, Scope, UnauthorizedException } from '@nestjs/common';
 import { REQUEST } from '@nestjs/core';
-import { Prisma } from '@prisma/clientflow-client';
+import { Prisma } from '../../generated/clientflow';
 import { compare } from 'bcrypt';
 import { randomBytes } from 'crypto';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';

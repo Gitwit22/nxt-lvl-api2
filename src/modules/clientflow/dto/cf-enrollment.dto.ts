@@ -1,4 +1,4 @@
-import { CfEnrollmentStatus } from '@prisma/clientflow-client';
+import { CfEnrollmentStatus } from '../../../generated/clientflow';
 import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class CreateCfEnrollmentDto {
