@@ -55,6 +55,9 @@ export class ClientflowController {
   @Get('programs')
   listPrograms() { return this.svc.listPrograms(); }
 
+  @Get('programs/:id/detail')
+  getProgramDetail(@Param('id') id: string) { return this.svc.getProgramDetail(id); }
+
   @Post('programs')
   createProgram(@Body() dto: CreateCfProgramDto) { return this.svc.createProgram(dto); }
 

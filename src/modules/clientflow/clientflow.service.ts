@@ -18,6 +18,11 @@ import { CreateCfFormTemplateDto, UpdateCfFormTemplateDto } from './dto/cf-form-
 import { TransitionToLiveModeDto } from './dto/transition-to-live-mode.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { canonicalFieldKey, MappableFormField } from './form-field-mapping';
+import type {
+  CfProgramDetailAnswer,
+  CfProgramDetailAnswerGroup,
+  CfProgramDetailResponse,
+} from './dto/cf-program-detail.dto';
 
 type LiveOrganizationState = {
   liveMode: boolean;
@@ -66,6 +71,61 @@ function validateTemplateFields(
       seen.add(canonical);
     }
   }
+}
+
+type DetailField = { id: string; label: string };
+type DetailSection = {
+  id: string;
+  kind: 'core' | 'program';
+  programId: string | null;
+  title: string;
+  fields: DetailField[];
+};
+
+function jsonRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function detailFields(value: unknown): DetailField[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((field): field is DetailField =>
+    field !== null
+      && typeof field === 'object'
+      && typeof (field as DetailField).id === 'string'
+      && typeof (field as DetailField).label === 'string',
+  );
+}
+
+function detailSections(value: unknown): DetailSection[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((section) => {
+    if (section === null || typeof section !== 'object') return [];
+    const candidate = section as Partial<DetailSection>;
+    if (
+      typeof candidate.id !== 'string'
+      || (candidate.kind !== 'core' && candidate.kind !== 'program')
+      || typeof candidate.title !== 'string'
+    ) return [];
+    return [{
+      id: candidate.id,
+      kind: candidate.kind,
+      programId: typeof candidate.programId === 'string' ? candidate.programId : null,
+      title: candidate.title,
+      fields: detailFields(candidate.fields),
+    }];
+  });
+}
+
+function labeledAnswers(fields: DetailField[], responses: unknown): CfProgramDetailAnswer[] {
+  const values = jsonRecord(responses);
+  const labels = new Map(fields.map((field) => [field.id, field.label]));
+  return Object.entries(values).map(([fieldId, value]) => ({
+    fieldId,
+    label: labels.get(fieldId) ?? fieldId,
+    value,
+  }));
 }
 
 @Injectable({ scope: Scope.REQUEST })
@@ -263,6 +323,187 @@ export class ClientflowService {
         ...(dto.statusPipeline !== undefined && { statusPipeline: dto.statusPipeline as Prisma.InputJsonValue }),
       },
     });
+  }
+
+  async getProgramDetail(programId: string): Promise<CfProgramDetailResponse> {
+    const orgId = await this.getOrgId();
+    const program = await this.prisma.cfProgram.findFirst({
+      where: { id: programId, organizationId: orgId },
+    });
+    if (!program) throw new NotFoundException('Program not found.');
+
+    const enrollments = await this.prisma.cfProgramEnrollment.findMany({
+      where: { organizationId: orgId, programId, isArchived: false },
+      orderBy: { createdAt: 'desc' },
+    });
+    const enrollmentIds = enrollments.map(({ id }) => id);
+    const clientIds = [...new Set(enrollments.map(({ clientId }) => clientId))];
+
+    const [clients, intakeLinks, assignments, terms, contracts, monitoring] = await Promise.all([
+      this.prisma.cfClient.findMany({
+        where: { organizationId: orgId, id: { in: clientIds } },
+        select: {
+          id: true,
+          businessName: true,
+          primaryContactName: true,
+          email: true,
+          phone: true,
+        },
+      }),
+      this.prisma.cfIntakeSubmissionProgram.findMany({
+        where: { organizationId: orgId, programId, enrollmentId: { in: enrollmentIds } },
+      }),
+      this.prisma.cfFormAssignment.findMany({
+        where: {
+          organizationId: orgId,
+          OR: [
+            { enrollmentId: { in: enrollmentIds } },
+            { enrollmentId: null, clientId: { in: clientIds } },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.cfTerms.findMany({
+        where: {
+          organizationId: orgId,
+          programId,
+          OR: [
+            { enrollmentId: { in: enrollmentIds } },
+            { enrollmentId: null, clientId: { in: clientIds } },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.cfContract.findMany({
+        where: {
+          organizationId: orgId,
+          programId,
+          OR: [
+            { enrollmentId: { in: enrollmentIds } },
+            { enrollmentId: null, clientId: { in: clientIds } },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.cfMonitoringItem.findMany({
+        where: {
+          organizationId: orgId,
+          programId,
+          OR: [
+            { enrollmentId: { in: enrollmentIds } },
+            { enrollmentId: null, clientId: { in: clientIds } },
+          ],
+        },
+        orderBy: { dueDate: 'asc' },
+      }),
+    ]);
+
+    const submissionIds = [...new Set(intakeLinks.map(({ intakeSubmissionId }) => intakeSubmissionId))];
+    const formIds = [...new Set(assignments.map(({ formId }) => formId))];
+    const [submissions, snapshots, templates] = await Promise.all([
+      this.prisma.cfIntakeSubmission.findMany({
+        where: { organizationId: orgId, id: { in: submissionIds } },
+        orderBy: { submittedAt: 'desc' },
+      }),
+      this.prisma.cfIntakeSubmissionSnapshot.findMany({
+        where: { organizationId: orgId, intakeSubmissionId: { in: submissionIds } },
+      }),
+      this.prisma.cfFormTemplate.findMany({
+        where: { organizationId: orgId, id: { in: formIds } },
+      }),
+    ]);
+
+    const clientById = new Map(clients.map((client) => [client.id, client]));
+    const submissionById = new Map(submissions.map((submission) => [submission.id, submission]));
+    const snapshotBySubmissionId = new Map(
+      snapshots.map((snapshot) => [snapshot.intakeSubmissionId, snapshot]),
+    );
+    const templateById = new Map(templates.map((template) => [template.id, template]));
+
+    const participants = enrollments.flatMap((enrollment) => {
+      const client = clientById.get(enrollment.clientId);
+      if (!client) return [];
+      const enrollmentLinks = intakeLinks.filter((link) => link.enrollmentId === enrollment.id);
+      const coreIntake: CfProgramDetailAnswerGroup[] = [];
+      const programIntake: CfProgramDetailAnswerGroup[] = [];
+
+      for (const link of enrollmentLinks) {
+        const submission = submissionById.get(link.intakeSubmissionId);
+        if (!submission) continue;
+        const sections = detailSections(
+          snapshotBySubmissionId.get(submission.id)?.renderedSections,
+        );
+        for (const section of sections.filter(({ kind }) => kind === 'core')) {
+          coreIntake.push({
+            id: `${submission.id}:${section.id}`,
+            title: section.title,
+            submittedAt: submission.submittedAt,
+            answers: labeledAnswers(section.fields, submission.responsePayload),
+          });
+        }
+        for (const section of sections.filter(
+          ({ kind, programId: sectionProgramId }) =>
+            kind === 'program' && sectionProgramId === programId,
+        )) {
+          programIntake.push({
+            id: `${submission.id}:${section.id}`,
+            title: section.title,
+            submittedAt: submission.submittedAt,
+            answers: labeledAnswers(section.fields, link.responsePayload),
+          });
+        }
+      }
+
+      const participantForms = assignments
+        .filter((assignment) => {
+          if (assignment.enrollmentId) return assignment.enrollmentId === enrollment.id;
+          const template = templateById.get(assignment.formId);
+          return assignment.clientId === enrollment.clientId && template?.programId === programId;
+        })
+        .map((assignment) => {
+          const template = templateById.get(assignment.formId);
+          return {
+            id: assignment.id,
+            formId: assignment.formId,
+            templateName: template?.name ?? 'Form',
+            status: assignment.status,
+            dueAt: assignment.dueAt,
+            dueDate: assignment.dueDate,
+            sentAt: assignment.sentAt,
+            openedAt: assignment.openedAt,
+            submittedAt: assignment.submittedAt,
+            answers: labeledAnswers(detailFields(template?.fields), assignment.responses),
+          };
+        });
+      const matchesEnrollment = (record: { enrollmentId: string | null; clientId: string }) =>
+        record.enrollmentId
+          ? record.enrollmentId === enrollment.id
+          : record.clientId === enrollment.clientId;
+
+      return [{
+        client,
+        enrollment,
+        coreIntake,
+        programIntake,
+        forms: participantForms,
+        terms: terms.filter(matchesEnrollment),
+        contracts: contracts.filter(matchesEnrollment),
+        monitoring: monitoring.filter(matchesEnrollment),
+      }];
+    });
+
+    const closedStatuses = new Set(['declined', 'withdrawn']);
+    return {
+      program,
+      summary: {
+        current: enrollments.filter(({ status }) =>
+          status !== 'completed' && !closedStatuses.has(status),
+        ).length,
+        completed: enrollments.filter(({ status }) => status === 'completed').length,
+        closed: enrollments.filter(({ status }) => closedStatuses.has(status)).length,
+      },
+      participants,
+    };
   }
 
   // ─── Form Templates ─────────────────────────────────────────────────────────
