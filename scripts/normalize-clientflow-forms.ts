@@ -1,6 +1,7 @@
 import { Prisma, PrismaClient } from '../src/generated/clientflow';
 import {
   canonicalFieldKey,
+  ensureCoreIntakeFields,
   normalizePublicFormFields,
 } from '../src/modules/clientflow/form-field-mapping';
 
@@ -33,30 +34,7 @@ function fieldsValue(value: Prisma.JsonValue): StoredField[] {
 }
 
 function normalizeCore(fields: StoredField[]): StoredField[] {
-  const normalized: StoredField[] = [];
-  const seen = new Set<string>();
-
-  for (const field of normalizePublicFormFields(fields)) {
-    const canonical = canonicalFieldKey(field);
-    if (canonical && seen.has(canonical)) continue;
-    if (canonical) seen.add(canonical);
-    normalized.push(canonical === 'businessType'
-      ? { ...field, id: 'businessType', label: 'Business type', prefillKey: 'businessType' }
-      : field);
-  }
-
-  if (!seen.has('businessType')) {
-    const insertAfter = normalized.findIndex((field) => canonicalFieldKey(field) === 'businessDescription');
-    const businessType: StoredField = {
-      id: 'businessType',
-      label: 'Business type',
-      type: 'text',
-      required: true,
-      prefillKey: 'businessType',
-    };
-    normalized.splice(insertAfter >= 0 ? insertAfter + 1 : normalized.length, 0, businessType);
-  }
-  return normalized;
+  return ensureCoreIntakeFields(fields);
 }
 
 function normalizeProgram(fields: StoredField[]): StoredField[] {

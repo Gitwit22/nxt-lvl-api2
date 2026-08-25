@@ -1,4 +1,9 @@
-import { canonicalFieldKey, normalizePublicFormFields } from './form-field-mapping';
+import {
+  canonicalFieldKey,
+  CORE_INTAKE_FIELDS,
+  ensureCoreIntakeFields,
+  normalizePublicFormFields,
+} from './form-field-mapping';
 
 describe('canonicalFieldKey', () => {
   it.each([
@@ -53,5 +58,36 @@ describe('normalizePublicFormFields', () => {
     ])).toEqual([
       { id: 'phone', label: 'Phone', type: 'phone', required: false },
     ]);
+  });
+});
+
+describe('ensureCoreIntakeFields', () => {
+  it('restores all baseline fields when the stored Master Intake is empty', () => {
+    expect(ensureCoreIntakeFields([])).toEqual(CORE_INTAKE_FIELDS);
+  });
+
+  it('keeps valid stored customization and inserts each missing baseline field once', () => {
+    const fields = ensureCoreIntakeFields([
+      { id: 'fullName', label: 'Your full name', type: 'text', required: true },
+      { id: 'email', label: 'Best email address', type: 'email', required: true },
+      { id: 'email', label: 'Duplicate email', type: 'email', required: false },
+    ]);
+
+    expect(fields[0]).toEqual({
+      id: 'fullName', label: 'Your full name', type: 'text', required: true,
+    });
+    expect(fields.find((field) => field.id === 'email')?.label).toBe('Best email address');
+    expect(fields.filter((field) => canonicalFieldKey(field) === 'email')).toHaveLength(1);
+    expect(fields.map((field) => canonicalFieldKey(field)))
+      .toEqual(CORE_INTAKE_FIELDS.map((field) => canonicalFieldKey(field)));
+  });
+
+  it('does not restore miscellaneous legacy fields into the core section', () => {
+    const fields = ensureCoreIntakeFields([
+      { id: 'revenueGoal', label: 'Revenue goal', type: 'number', required: false },
+    ]);
+
+    expect(fields.some((field) => field.id === 'revenueGoal')).toBe(false);
+    expect(fields).toEqual(CORE_INTAKE_FIELDS);
   });
 });

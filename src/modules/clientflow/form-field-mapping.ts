@@ -10,6 +10,33 @@ export interface PublicFormFieldShape extends MappableFormField {
   options?: string[];
 }
 
+export const CORE_INTAKE_FIELDS: PublicFormFieldShape[] = [
+  { id: 'name', label: 'Name', type: 'text', required: true },
+  { id: 'business', label: 'Business / Organization Name', type: 'text', required: true },
+  { id: 'email', label: 'Email', type: 'email', required: true },
+  { id: 'phone', label: 'Phone', type: 'phone', required: true },
+  { id: 'website', label: 'Website', type: 'url', required: false },
+  { id: 'facebookUrl', label: 'Facebook URL', type: 'url', required: false },
+  { id: 'instagramUrl', label: 'Instagram URL', type: 'url', required: false },
+  { id: 'linkedinUrl', label: 'LinkedIn URL', type: 'url', required: false },
+  { id: 'tiktokUrl', label: 'TikTok URL', type: 'url', required: false },
+  { id: 'youtubeUrl', label: 'YouTube URL', type: 'url', required: false },
+  { id: 'businessType', label: 'Business type', type: 'text', required: true, prefillKey: 'businessType' },
+  { id: 'description', label: 'Brief business description', type: 'textarea', required: true },
+  { id: 'assistance', label: 'Type of assistance needed', type: 'textarea', required: true },
+  { id: 'budget', label: 'Estimated budget', type: 'number', required: false },
+  { id: 'start', label: 'Desired start date', type: 'date', required: false },
+  {
+    id: 'contact',
+    label: 'Preferred contact method',
+    type: 'select',
+    required: false,
+    options: ['Cell number', 'Work number'],
+  },
+  { id: 'heard', label: 'How did you hear about us?', type: 'text', required: false },
+  { id: 'comments', label: 'Additional comments', type: 'textarea', required: false },
+];
+
 export const TOP_LEVEL_FIELD_KEYS: Record<string, string> = {
   businessName: 'businessName',
   primaryContactName: 'primaryContactName',
@@ -131,4 +158,21 @@ export function normalizePublicFormFields(rawFields: unknown): PublicFormFieldSh
     }
   }
   return normalized;
+}
+
+export function ensureCoreIntakeFields(rawFields: unknown): PublicFormFieldShape[] {
+  const normalized = normalizePublicFormFields(rawFields);
+  const byCanonicalKey = new Map<string, PublicFormFieldShape>();
+
+  for (const field of normalized) {
+    const canonical = canonicalFieldKey(field);
+    const key = canonical ?? `id:${field.id}`;
+    if (byCanonicalKey.has(key)) continue;
+    byCanonicalKey.set(key, field);
+  }
+
+  return CORE_INTAKE_FIELDS.map((baseline) => {
+    const key = canonicalFieldKey(baseline) ?? `id:${baseline.id}`;
+    return byCanonicalKey.get(key) ?? { ...baseline };
+  });
 }

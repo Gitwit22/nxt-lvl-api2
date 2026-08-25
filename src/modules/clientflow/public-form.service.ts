@@ -4,6 +4,7 @@ import { createHash, randomBytes } from 'crypto';
 import { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
 import { PublicFormResponseValue, SubmitPublicFormDto } from './dto/submit-public-form.dto';
 import {
+  ensureCoreIntakeFields,
   INTAKE_FIELD_KEYS,
   normalizePublicFormFields,
   PublicFormFieldShape,
@@ -87,6 +88,17 @@ function isBlankResponse(value: PublicFormResponseValue | undefined): boolean {
     || value === null
     || (typeof value === 'string' && value.trim().length === 0)
     || (Array.isArray(value) && value.length === 0);
+}
+
+function resolveDesiredStartDate(
+  fields: PublicFormFieldShape[],
+  responses: Record<string, PublicFormResponseValue>,
+): Date | null {
+  const startField = fields.find((field) => field.id === 'start');
+  const value = startField ? responses[startField.id] : undefined;
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function canonicalize(value: unknown): unknown {
@@ -235,7 +247,7 @@ export class PublicFormService {
       });
     }
 
-    const fields = normalizePublicFormFields(template.fields);
+    const fields = ensureCoreIntakeFields(template.fields);
     const activeProgramIds = new Set(programs.map(({ id }) => id));
     const renderedSections: RenderedSection[] = [
       {
@@ -438,6 +450,7 @@ export class PublicFormService {
       dto.coreResponses,
       (existingClient.intake ?? {}) as ClientIntake,
     );
+    const desiredStartDate = resolveDesiredStartDate(coreSection.fields, dto.coreResponses);
     const now = new Date();
     const execute = async () => this.prisma.$transaction(async (tx) => {
       const existing = await tx.cfIntakeSubmission.findFirst({
@@ -459,13 +472,22 @@ export class PublicFormService {
           clientId: assignment.clientId,
           programId: { in: selectedProgramIds },
         },
-        select: { id: true, programId: true },
+        select: { id: true, programId: true, startDate: true },
       });
       const enrollmentByProgram = new Map(
         existingEnrollments.map((enrollment) => [enrollment.programId, enrollment]),
       );
       for (const programId of selectedProgramIds) {
-        if (enrollmentByProgram.has(programId)) continue;
+        const existingEnrollment = enrollmentByProgram.get(programId);
+        if (existingEnrollment) {
+          if (desiredStartDate && !existingEnrollment.startDate) {
+            await tx.cfProgramEnrollment.update({
+              where: { id: existingEnrollment.id },
+              data: { startDate: desiredStartDate },
+            });
+          }
+          continue;
+        }
         const enrollment = await tx.cfProgramEnrollment.create({
           data: {
             organizationId: assignment.organizationId,
@@ -474,6 +496,7 @@ export class PublicFormService {
             status: CfEnrollmentStatus.interested,
             assignedUserId: existingClient.assignedUserId,
             assignedStaff: existingClient.assignedStaff,
+            startDate: desiredStartDate,
             isDemo: existingClient.isDemo,
           },
         });
