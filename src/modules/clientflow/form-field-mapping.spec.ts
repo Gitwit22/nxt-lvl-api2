@@ -1,4 +1,4 @@
-import { canonicalFieldKey } from './form-field-mapping';
+import { canonicalFieldKey, normalizePublicFormFields } from './form-field-mapping';
 
 describe('canonicalFieldKey', () => {
   it.each([
@@ -28,5 +28,30 @@ describe('canonicalFieldKey', () => {
 
   it('leaves program-specific questions unclassified', () => {
     expect(canonicalFieldKey({ id: 'revenueGoal', label: 'Revenue goal' })).toBeNull();
+  });
+});
+
+describe('normalizePublicFormFields', () => {
+  it('restores readable labels and valid types for malformed legacy core fields', () => {
+    expect(normalizePublicFormFields([
+      { id: 'name', label: '', type: 'string', required: true },
+      { id: 'business', label: '   ', required: true },
+      { id: 'email', label: '', type: 'email', required: true },
+    ])).toEqual([
+      { id: 'name', label: 'Name', type: 'text', required: true },
+      { id: 'business', label: 'Business / Organization Name', type: 'text', required: true },
+      { id: 'email', label: 'Email', type: 'email', required: true },
+    ]);
+  });
+
+  it('drops invalid entries and duplicate field IDs', () => {
+    expect(normalizePublicFormFields([
+      null,
+      { id: '', label: 'Missing ID', type: 'text' },
+      { id: 'phone', label: '', type: 'phone' },
+      { id: 'phone', label: 'Phone number', type: 'phone' },
+    ])).toEqual([
+      { id: 'phone', label: 'Phone', type: 'phone', required: false },
+    ]);
   });
 });

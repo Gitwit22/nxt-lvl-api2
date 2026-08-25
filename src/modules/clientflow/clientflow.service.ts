@@ -44,6 +44,10 @@ function validateTemplateFields(
   if (fields.length !== rawFields.length) {
     throw new BadRequestException('Every form field requires an ID and label.');
   }
+  const blankField = fields.find((field) => !field.id.trim() || !field.label.trim());
+  if (blankField) {
+    throw new BadRequestException('Every form field requires a non-empty ID and label.');
+  }
 
   const duplicateId = fields.find((field, index) =>
     fields.findIndex((candidate) => candidate.id === field.id) !== index,

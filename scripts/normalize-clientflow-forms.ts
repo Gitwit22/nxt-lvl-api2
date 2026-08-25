@@ -1,5 +1,8 @@
 import { Prisma, PrismaClient } from '../src/generated/clientflow';
-import { canonicalFieldKey } from '../src/modules/clientflow/form-field-mapping';
+import {
+  canonicalFieldKey,
+  normalizePublicFormFields,
+} from '../src/modules/clientflow/form-field-mapping';
 
 interface StoredField {
   id: string;
@@ -33,7 +36,7 @@ function normalizeCore(fields: StoredField[]): StoredField[] {
   const normalized: StoredField[] = [];
   const seen = new Set<string>();
 
-  for (const field of fields) {
+  for (const field of normalizePublicFormFields(fields)) {
     const canonical = canonicalFieldKey(field);
     if (canonical && seen.has(canonical)) continue;
     if (canonical) seen.add(canonical);
@@ -57,7 +60,7 @@ function normalizeCore(fields: StoredField[]): StoredField[] {
 }
 
 function normalizeProgram(fields: StoredField[]): StoredField[] {
-  return fields.filter((field) => canonicalFieldKey(field) === null);
+  return normalizePublicFormFields(fields).filter((field) => canonicalFieldKey(field) === null);
 }
 
 async function normalizeTemplates(): Promise<void> {

@@ -3,16 +3,12 @@ import { CfEnrollmentStatus, Prisma } from '../../generated/clientflow';
 import { createHash, randomBytes } from 'crypto';
 import { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
 import { PublicFormResponseValue, SubmitPublicFormDto } from './dto/submit-public-form.dto';
-import { INTAKE_FIELD_KEYS, TOP_LEVEL_FIELD_KEYS } from './form-field-mapping';
-
-interface FormFieldShape {
-  id: string;
-  label: string;
-  type: string;
-  required: boolean;
-  options?: string[];
-  prefillKey?: string;
-}
+import {
+  INTAKE_FIELD_KEYS,
+  normalizePublicFormFields,
+  PublicFormFieldShape,
+  TOP_LEVEL_FIELD_KEYS,
+} from './form-field-mapping';
 
 interface ClientIntake {
   businessDescription?: string;
@@ -33,7 +29,7 @@ export interface RenderedSection {
   programId: string | null;
   title: string;
   description: string;
-  fields: FormFieldShape[];
+  fields: PublicFormFieldShape[];
 }
 
 const SOCIAL_HOSTS: Record<string, string[]> = {
@@ -45,7 +41,7 @@ const SOCIAL_HOSTS: Record<string, string[]> = {
 };
 
 function mapResponsesToClient(
-  fields: FormFieldShape[],
+  fields: PublicFormFieldShape[],
   responses: Record<string, PublicFormResponseValue>,
   currentIntake: ClientIntake,
 ): { client: Record<string, string>; intake: ClientIntake; socialLinks?: string[] } {
@@ -117,7 +113,7 @@ function hashSubmission(dto: SubmitPublicFormDto): string {
 }
 
 function resolvePrefill(
-  fields: FormFieldShape[],
+  fields: PublicFormFieldShape[],
   client: {
     email: string;
     phone: string;
@@ -239,7 +235,7 @@ export class PublicFormService {
       });
     }
 
-    const fields = (Array.isArray(template.fields) ? template.fields : []) as unknown as FormFieldShape[];
+    const fields = normalizePublicFormFields(template.fields);
     const activeProgramIds = new Set(programs.map(({ id }) => id));
     const renderedSections: RenderedSection[] = [
       {
@@ -266,9 +262,7 @@ export class PublicFormService {
           programId: activeProgram.id,
           title: section?.name ?? activeProgram.name,
           description: section?.description ?? '',
-          fields: section
-            ? (Array.isArray(section.fields) ? section.fields : []) as unknown as FormFieldShape[]
-            : [],
+          fields: section ? normalizePublicFormFields(section.fields) : [],
         };
       }),
     ];
