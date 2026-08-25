@@ -1,6 +1,7 @@
 export interface CfProgramDetailAnswer {
   fieldId: string;
   label: string;
+  type?: string;
   value: unknown;
 }
 

@@ -2,7 +2,11 @@ import {
   canonicalFieldKey,
   CORE_INTAKE_FIELDS,
   ensureCoreIntakeFields,
+  GRANT_ACCEPTANCE_TEXT,
+  GRANT_BUSINESS_STAGE_OPTIONS,
+  GRANT_REVENUE_STAGE_OPTIONS,
   isPublicFieldRequired,
+  normalizeProgramFormFields,
   normalizePublicFormFields,
 } from './form-field-mapping';
 
@@ -102,5 +106,43 @@ describe('ensureCoreIntakeFields', () => {
 
     expect(fields.some((field) => field.id === 'revenueGoal')).toBe(false);
     expect(fields).toEqual(CORE_INTAKE_FIELDS);
+  });
+});
+
+describe('normalizeProgramFormFields', () => {
+  it('upgrades the Grant section and removes repeated shared intake fields', () => {
+    const fields = normalizeProgramFormFields([
+      { id: 'applicant', label: 'Applicant name', type: 'text', required: true },
+      { id: 'purpose', label: 'Purpose of funds', type: 'textarea', required: true },
+      { id: 'stage', label: 'Business stage', type: 'select', required: false },
+      { id: 'revenue', label: 'Revenue stage', type: 'select', required: false },
+      { id: 'documents', label: 'Required documents', type: 'file', required: true },
+      { id: 'agreement', label: 'Agreement checkbox', type: 'checkbox', required: true },
+      { id: 'signature', label: 'Signature placeholder', type: 'text', required: true },
+    ], 'prog-grant', 'form-grant');
+
+    expect(fields.some((field) => field.id === 'applicant')).toBe(false);
+    expect(fields.find((field) => field.id === 'purpose')).toBeDefined();
+    expect(fields.find((field) => field.id === 'stage')).toMatchObject({
+      type: 'select', required: true, options: GRANT_BUSINESS_STAGE_OPTIONS,
+    });
+    expect(fields.find((field) => field.id === 'revenue')).toMatchObject({
+      type: 'select', required: true, options: GRANT_REVENUE_STAGE_OPTIONS,
+    });
+    expect(fields.find((field) => field.id === 'documents')?.required).toBe(false);
+    expect(fields.find((field) => field.id === 'agreement')).toMatchObject({
+      label: 'I Accept', type: 'checkbox', required: true, helpText: GRANT_ACCEPTANCE_TEXT,
+    });
+    expect(fields.find((field) => field.id === 'signature')).toMatchObject({
+      label: 'Signature', type: 'signature', required: true,
+    });
+  });
+
+  it('leaves non-Grant program-specific fields unchanged', () => {
+    expect(normalizeProgramFormFields([
+      { id: 'growthGoal', label: 'Growth goal', type: 'text', required: true },
+    ], 'program-1', 'section-1')).toEqual([
+      { id: 'growthGoal', label: 'Growth goal', type: 'text', required: true },
+    ]);
   });
 });

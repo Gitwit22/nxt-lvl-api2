@@ -1,8 +1,7 @@
 import { Prisma, PrismaClient } from '../src/generated/clientflow';
 import {
-  canonicalFieldKey,
   ensureCoreIntakeFields,
-  normalizePublicFormFields,
+  normalizeProgramFormFields,
 } from '../src/modules/clientflow/form-field-mapping';
 
 interface StoredField {
@@ -37,8 +36,12 @@ function normalizeCore(fields: StoredField[]): StoredField[] {
   return ensureCoreIntakeFields(fields);
 }
 
-function normalizeProgram(fields: StoredField[]): StoredField[] {
-  return normalizePublicFormFields(fields).filter((field) => canonicalFieldKey(field) === null);
+function normalizeProgram(
+  fields: StoredField[],
+  programId: string | null,
+  templateId: string,
+): StoredField[] {
+  return normalizeProgramFormFields(fields, programId, templateId);
 }
 
 async function normalizeTemplates(): Promise<void> {
@@ -52,7 +55,7 @@ async function normalizeTemplates(): Promise<void> {
     const after = template.scope === 'master_core'
       ? normalizeCore(before)
       : dynamicProgramSection
-        ? normalizeProgram(before)
+        ? normalizeProgram(before, template.programId, template.id)
         : before;
     if (JSON.stringify(before) === JSON.stringify(after)) continue;
 

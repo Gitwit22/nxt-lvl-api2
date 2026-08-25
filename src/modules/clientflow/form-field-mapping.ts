@@ -8,7 +8,26 @@ export interface PublicFormFieldShape extends MappableFormField {
   type: string;
   required: boolean;
   options?: string[];
+  helpText?: string;
 }
+
+export const GRANT_BUSINESS_STAGE_OPTIONS = [
+  'Idea Stage',
+  'Pre-Revenue',
+  'Early Revenue',
+  'Growth Stage',
+  'Established',
+];
+
+export const GRANT_REVENUE_STAGE_OPTIONS = [
+  '$0',
+  'Under $1,000',
+  '$1,000-$5,000',
+  '$5,000-$10,000',
+  '$10,000+',
+];
+
+export const GRANT_ACCEPTANCE_TEXT = 'By selecting I Accept, I certify that the information I have provided is true and accurate to the best of my knowledge. I understand that participation in this program may require me to complete certain actions, provide requested information or documentation, meet applicable deadlines, and actively participate in the process. I acknowledge that achieving my desired outcome may depend, in part, on my timely cooperation and completion of these requirements.';
 
 export const CORE_INTAKE_FIELDS: PublicFormFieldShape[] = [
   { id: 'name', label: 'Name', type: 'text', required: true },
@@ -105,6 +124,7 @@ const FIELD_LABELS: Record<string, string> = {
 
 const FIELD_TYPES = new Set([
   'text', 'email', 'phone', 'url', 'textarea', 'number', 'date', 'select', 'file', 'checkbox',
+  'signature',
 ]);
 
 export function canonicalFieldKey(field: MappableFormField): string | null {
@@ -153,6 +173,9 @@ export function normalizePublicFormFields(rawFields: unknown): PublicFormFieldSh
       ...(Array.isArray(value.options)
         ? { options: value.options.filter((option): option is string => typeof option === 'string') }
         : {}),
+      ...(typeof value.helpText === 'string' && value.helpText.trim()
+        ? { helpText: value.helpText.trim() }
+        : {}),
     };
     const existingIndex = byId.get(id);
     if (existingIndex === undefined) {
@@ -163,6 +186,45 @@ export function normalizePublicFormFields(rawFields: unknown): PublicFormFieldSh
     }
   }
   return normalized;
+}
+
+export function normalizeProgramFormFields(
+  rawFields: unknown,
+  programId: string | null,
+  templateId?: string,
+): PublicFormFieldShape[] {
+  const fields = normalizePublicFormFields(rawFields)
+    .filter((field) => canonicalFieldKey(field) === null);
+  if (programId !== 'prog-grant' && templateId !== 'form-grant') return fields;
+
+  const grantOverrides: Record<string, Partial<PublicFormFieldShape>> = {
+    stage: {
+      label: 'Business stage',
+      type: 'select',
+      required: true,
+      options: GRANT_BUSINESS_STAGE_OPTIONS,
+    },
+    revenue: {
+      label: 'Revenue stage',
+      type: 'select',
+      required: true,
+      options: GRANT_REVENUE_STAGE_OPTIONS,
+    },
+    documents: { label: 'Required documents', type: 'file', required: false },
+    agreement: {
+      label: 'I Accept',
+      type: 'checkbox',
+      required: true,
+      helpText: GRANT_ACCEPTANCE_TEXT,
+    },
+    signature: { label: 'Signature', type: 'signature', required: true },
+  };
+  const byId = new Map(fields.map((field) => [field.id, field]));
+  for (const [id, override] of Object.entries(grantOverrides)) {
+    byId.set(id, { ...(byId.get(id) ?? { id }), ...override } as PublicFormFieldShape);
+  }
+  return [...fields.filter((field) => !(field.id in grantOverrides)), ...Object.keys(grantOverrides)
+    .map((id) => byId.get(id)!)];
 }
 
 export function ensureCoreIntakeFields(rawFields: unknown): PublicFormFieldShape[] {

@@ -62,6 +62,16 @@ describe('PublicFormService.submitPublicForm', () => {
       fields: [
         { id: 'growthGoal', label: 'Growth goal', type: 'text', required: true },
         { id: 'businessLicense', label: 'Business license', type: 'file', required: true },
+        {
+          id: 'stage', label: 'Business stage', type: 'select', required: true,
+          options: ['Idea Stage', 'Pre-Revenue'],
+        },
+        {
+          id: 'revenue', label: 'Revenue stage', type: 'select', required: true,
+          options: ['$0', 'Under $1,000'],
+        },
+        { id: 'agreement', label: 'I Accept', type: 'checkbox', required: true },
+        { id: 'signature', label: 'Signature', type: 'signature', required: true },
       ],
     },
   ];
@@ -126,7 +136,15 @@ describe('PublicFormService.submitPublicForm', () => {
       contact: 'Cell number',
       heard: 'Community event',
     },
-    programResponses: { 'program-1': { growthGoal: 'Hire two designers' } },
+    programResponses: {
+      'program-1': {
+        growthGoal: 'Hire two designers',
+        stage: 'Pre-Revenue',
+        revenue: 'Under $1,000',
+        agreement: 'true',
+        signature: 'Jordan Lee',
+      },
+    },
   };
 
   it('updates the client and links answers and start date to the selected program', async () => {
@@ -171,7 +189,13 @@ describe('PublicFormService.submitPublicForm', () => {
         intakeSubmissionId: 'submission-1',
         programId: 'program-1',
         enrollmentId: 'enrollment-1',
-        responsePayload: { growthGoal: 'Hire two designers' },
+        responsePayload: {
+          growthGoal: 'Hire two designers',
+          stage: 'Pre-Revenue',
+          revenue: 'Under $1,000',
+          agreement: 'true',
+          signature: 'Jordan Lee',
+        },
       }],
     });
   });
@@ -207,11 +231,58 @@ describe('PublicFormService.submitPublicForm', () => {
     const missingGrowthGoal = {
       ...dto,
       idempotencyKey: 'request-missing-growth-goal',
-      programResponses: { 'program-1': {} },
+      programResponses: {
+        'program-1': { ...dto.programResponses['program-1'], growthGoal: '' },
+      },
     };
 
     await expect(service.submitPublicForm('secure-token', missingGrowthGoal))
       .rejects.toThrow('Please complete: Growth goal.');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unchecked required acceptance checkbox', async () => {
+    const { service, prisma } = setup();
+    const unchecked = {
+      ...dto,
+      idempotencyKey: 'request-unchecked',
+      programResponses: {
+        'program-1': { ...dto.programResponses['program-1'], agreement: 'false' },
+      },
+    };
+
+    await expect(service.submitPublicForm('secure-token', unchecked))
+      .rejects.toThrow('Please complete: I Accept.');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects select values outside the rendered options', async () => {
+    const { service, prisma } = setup();
+    const tampered = {
+      ...dto,
+      idempotencyKey: 'request-tampered',
+      programResponses: {
+        'program-1': { ...dto.programResponses['program-1'], revenue: '$1,000,000+' },
+      },
+    };
+
+    await expect(service.submitPublicForm('secure-token', tampered))
+      .rejects.toThrow('Please correct: Revenue stage.');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects a typed signature longer than 200 characters', async () => {
+    const { service, prisma } = setup();
+    const oversized = {
+      ...dto,
+      idempotencyKey: 'request-oversized-signature',
+      programResponses: {
+        'program-1': { ...dto.programResponses['program-1'], signature: 'x'.repeat(201) },
+      },
+    };
+
+    await expect(service.submitPublicForm('secure-token', oversized))
+      .rejects.toThrow('Please correct: Signature.');
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });

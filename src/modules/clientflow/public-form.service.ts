@@ -7,6 +7,7 @@ import {
   ensureCoreIntakeFields,
   INTAKE_FIELD_KEYS,
   isPublicFieldRequired,
+  normalizeProgramFormFields,
   normalizePublicFormFields,
   PublicFormFieldShape,
   TOP_LEVEL_FIELD_KEYS,
@@ -89,6 +90,29 @@ function isBlankResponse(value: PublicFormResponseValue | undefined): boolean {
     || value === null
     || (typeof value === 'string' && value.trim().length === 0)
     || (Array.isArray(value) && value.length === 0);
+}
+
+function isRequiredResponseMissing(
+  field: PublicFormFieldShape,
+  value: PublicFormResponseValue | undefined,
+): boolean {
+  if (!isPublicFieldRequired(field)) return false;
+  if (field.type === 'checkbox') return value !== true && value !== 'true';
+  return isBlankResponse(value);
+}
+
+function isResponseInvalid(
+  field: PublicFormFieldShape,
+  value: PublicFormResponseValue | undefined,
+): boolean {
+  if (isBlankResponse(value)) return false;
+  if (field.type === 'select' && field.options?.length) {
+    return typeof value !== 'string' || !field.options.includes(value);
+  }
+  if (field.type === 'signature') {
+    return typeof value !== 'string' || value.trim().length > 200;
+  }
+  return false;
 }
 
 function resolveDesiredStartDate(
@@ -275,7 +299,9 @@ export class PublicFormService {
           programId: activeProgram.id,
           title: section?.name ?? activeProgram.name,
           description: section?.description ?? '',
-          fields: section ? normalizePublicFormFields(section.fields) : [],
+          fields: section
+            ? normalizeProgramFormFields(section.fields, activeProgram.id, section.id)
+            : [],
         };
       }),
     ];
@@ -313,7 +339,7 @@ export class PublicFormService {
         id: template.id,
         name: template.name,
         description: template.description,
-        fields: fields.map(({ id, label, type, required, options, prefillKey }) => {
+        fields: fields.map(({ id, label, type, required, options, prefillKey, helpText }) => {
           const resolvedOptions =
             id === 'program' || prefillKey === 'programOfInterest'
               ? programs.map(({ name }) => name)
@@ -324,6 +350,7 @@ export class PublicFormService {
             type,
             required,
             ...(resolvedOptions?.length ? { options: resolvedOptions } : {}),
+            ...(helpText ? { helpText } : {}),
           };
         }),
       },
@@ -426,8 +453,11 @@ export class PublicFormService {
       throw new BadRequestException('One or more core answers do not belong to this form.');
     }
 
-    const missingFields = coreSection.fields.filter(
-      (field) => isPublicFieldRequired(field) && isBlankResponse(dto.coreResponses[field.id]),
+    const missingFields = coreSection.fields.filter((field) =>
+      isRequiredResponseMissing(field, dto.coreResponses[field.id]),
+    );
+    const invalidFields = coreSection.fields.filter((field) =>
+      isResponseInvalid(field, dto.coreResponses[field.id]),
     );
     for (const programId of selectedProgramIds) {
       const section = selectedSections.find((candidate) => candidate.programId === programId);
@@ -437,12 +467,20 @@ export class PublicFormService {
         throw new BadRequestException('One or more program answers do not belong to the selected program.');
       }
       missingFields.push(...(section?.fields ?? []).filter(
-        (field) => isPublicFieldRequired(field) && isBlankResponse(responses[field.id]),
+        (field) => isRequiredResponseMissing(field, responses[field.id]),
+      ));
+      invalidFields.push(...(section?.fields ?? []).filter(
+        (field) => isResponseInvalid(field, responses[field.id]),
       ));
     }
     if (missingFields.length > 0) {
       throw new BadRequestException(
         `Please complete: ${missingFields.map((field) => field.label).join(', ')}.`,
+      );
+    }
+    if (invalidFields.length > 0) {
+      throw new BadRequestException(
+        `Please correct: ${invalidFields.map((field) => field.label).join(', ')}.`,
       );
     }
 

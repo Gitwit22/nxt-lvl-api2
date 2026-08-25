@@ -17,7 +17,13 @@ import { CreateCfDocumentDto, CreateCfCommunicationDto, CreateCfFinalReportDto, 
 import { CreateCfFormTemplateDto, UpdateCfFormTemplateDto } from './dto/cf-form-template.dto';
 import { TransitionToLiveModeDto } from './dto/transition-to-live-mode.dto';
 import { NotificationsService } from '../notifications/notifications.service';
-import { canonicalFieldKey, MappableFormField } from './form-field-mapping';
+import {
+  canonicalFieldKey,
+  ensureCoreIntakeFields,
+  MappableFormField,
+  normalizeProgramFormFields,
+  normalizePublicFormFields,
+} from './form-field-mapping';
 import type {
   CfProgramDetailAnswer,
   CfProgramDetailAnswerGroup,
@@ -77,7 +83,7 @@ function validateTemplateFields(
   }
 }
 
-type DetailField = { id: string; label: string };
+type DetailField = { id: string; label: string; type?: string };
 type DetailSection = {
   id: string;
   kind: 'core' | 'program';
@@ -124,10 +130,11 @@ function detailSections(value: unknown): DetailSection[] {
 
 function labeledAnswers(fields: DetailField[], responses: unknown): CfProgramDetailAnswer[] {
   const values = jsonRecord(responses);
-  const labels = new Map(fields.map((field) => [field.id, field.label]));
+  const fieldsById = new Map(fields.map((field) => [field.id, field]));
   return Object.entries(values).map(([fieldId, value]) => ({
     fieldId,
-    label: labels.get(fieldId) ?? fieldId,
+    label: fieldsById.get(fieldId)?.label ?? fieldId,
+    ...(fieldsById.get(fieldId)?.type ? { type: fieldsById.get(fieldId)!.type } : {}),
     value,
   }));
 }
@@ -514,7 +521,18 @@ export class ClientflowService {
 
   async listFormTemplates() {
     const orgId = await this.getOrgId();
-    return this.prisma.cfFormTemplate.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'asc' } });
+    const templates = await this.prisma.cfFormTemplate.findMany({
+      where: { organizationId: orgId },
+      orderBy: { createdAt: 'asc' },
+    });
+    return templates.map((template) => ({
+      ...template,
+      fields: template.scope === 'master_core'
+        ? ensureCoreIntakeFields(template.fields)
+        : template.scope === 'program_section' || template.programId !== null
+          ? normalizeProgramFormFields(template.fields, template.programId, template.id)
+          : normalizePublicFormFields(template.fields),
+    }));
   }
 
   async createFormTemplate(dto: CreateCfFormTemplateDto) {
