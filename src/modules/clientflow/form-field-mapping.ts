@@ -124,6 +124,10 @@ export function displayLabelForField(field: MappableFormField): string {
       || 'Form field');
 }
 
+export function isPublicFieldRequired(field: Pick<PublicFormFieldShape, 'type' | 'required'>): boolean {
+  return field.required && field.type !== 'file';
+}
+
 export function normalizePublicFormFields(rawFields: unknown): PublicFormFieldShape[] {
   if (!Array.isArray(rawFields)) return [];
   const normalized: PublicFormFieldShape[] = [];
@@ -135,6 +139,7 @@ export function normalizePublicFormFields(rawFields: unknown): PublicFormFieldSh
     const id = typeof value.id === 'string' ? value.id.trim() : '';
     if (!id) continue;
     const label = typeof value.label === 'string' ? value.label.trim() : '';
+    const type = typeof value.type === 'string' && FIELD_TYPES.has(value.type) ? value.type : 'text';
     const field: PublicFormFieldShape = {
       id,
       label: displayLabelForField({
@@ -142,8 +147,8 @@ export function normalizePublicFormFields(rawFields: unknown): PublicFormFieldSh
         label,
         ...(typeof value.prefillKey === 'string' ? { prefillKey: value.prefillKey } : {}),
       }),
-      type: typeof value.type === 'string' && FIELD_TYPES.has(value.type) ? value.type : 'text',
-      required: value.required === true,
+      type,
+      required: isPublicFieldRequired({ type, required: value.required === true }),
       ...(typeof value.prefillKey === 'string' ? { prefillKey: value.prefillKey } : {}),
       ...(Array.isArray(value.options)
         ? { options: value.options.filter((option): option is string => typeof option === 'string') }

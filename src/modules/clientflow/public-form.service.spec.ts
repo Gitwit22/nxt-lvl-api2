@@ -59,7 +59,10 @@ describe('PublicFormService.submitPublicForm', () => {
       programId: 'program-1',
       title: 'Accelerator questions',
       description: '',
-      fields: [{ id: 'growthGoal', label: 'Growth goal', type: 'text', required: true }],
+      fields: [
+        { id: 'growthGoal', label: 'Growth goal', type: 'text', required: true },
+        { id: 'businessLicense', label: 'Business license', type: 'file', required: true },
+      ],
     },
   ];
 
@@ -99,6 +102,7 @@ describe('PublicFormService.submitPublicForm', () => {
     };
     return {
       service: new PublicFormService(prisma as unknown as ClientflowPrismaService),
+      prisma,
       tx,
     };
   }
@@ -196,5 +200,18 @@ describe('PublicFormService.submitPublicForm', () => {
       where: { id: 'enrollment-1' },
       data: { startDate: new Date('2026-10-15') },
     });
+  });
+
+  it('still rejects a missing required non-file program answer', async () => {
+    const { service, prisma } = setup();
+    const missingGrowthGoal = {
+      ...dto,
+      idempotencyKey: 'request-missing-growth-goal',
+      programResponses: { 'program-1': {} },
+    };
+
+    await expect(service.submitPublicForm('secure-token', missingGrowthGoal))
+      .rejects.toThrow('Please complete: Growth goal.');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });

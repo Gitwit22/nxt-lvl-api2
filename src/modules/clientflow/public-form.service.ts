@@ -6,6 +6,7 @@ import { PublicFormResponseValue, SubmitPublicFormDto } from './dto/submit-publi
 import {
   ensureCoreIntakeFields,
   INTAKE_FIELD_KEYS,
+  isPublicFieldRequired,
   normalizePublicFormFields,
   PublicFormFieldShape,
   TOP_LEVEL_FIELD_KEYS,
@@ -426,7 +427,7 @@ export class PublicFormService {
     }
 
     const missingFields = coreSection.fields.filter(
-      (field) => field.required && isBlankResponse(dto.coreResponses[field.id]),
+      (field) => isPublicFieldRequired(field) && isBlankResponse(dto.coreResponses[field.id]),
     );
     for (const programId of selectedProgramIds) {
       const section = selectedSections.find((candidate) => candidate.programId === programId);
@@ -436,7 +437,7 @@ export class PublicFormService {
         throw new BadRequestException('One or more program answers do not belong to the selected program.');
       }
       missingFields.push(...(section?.fields ?? []).filter(
-        (field) => field.required && isBlankResponse(responses[field.id]),
+        (field) => isPublicFieldRequired(field) && isBlankResponse(responses[field.id]),
       ));
     }
     if (missingFields.length > 0) {

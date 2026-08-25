@@ -2,6 +2,7 @@ import {
   canonicalFieldKey,
   CORE_INTAKE_FIELDS,
   ensureCoreIntakeFields,
+  isPublicFieldRequired,
   normalizePublicFormFields,
 } from './form-field-mapping';
 
@@ -58,6 +59,18 @@ describe('normalizePublicFormFields', () => {
     ])).toEqual([
       { id: 'phone', label: 'Phone', type: 'phone', required: false },
     ]);
+  });
+
+  it('exposes stored required file fields as optional until uploads are supported', () => {
+    expect(normalizePublicFormFields([
+      { id: 'taxDocument', label: 'Tax document', type: 'file', required: true },
+      { id: 'legalName', label: 'Legal name', type: 'text', required: true },
+    ])).toEqual([
+      { id: 'taxDocument', label: 'Tax document', type: 'file', required: false },
+      { id: 'legalName', label: 'Legal name', type: 'text', required: true },
+    ]);
+    expect(isPublicFieldRequired({ type: 'file', required: true })).toBe(false);
+    expect(isPublicFieldRequired({ type: 'text', required: true })).toBe(true);
   });
 });
 
