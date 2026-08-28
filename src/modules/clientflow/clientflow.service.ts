@@ -11,7 +11,6 @@ import { UpdateCfClientDto } from './dto/update-cf-client.dto';
 import { CreateCfProgramDto, UpdateCfProgramDto } from './dto/cf-program.dto';
 import { CreateCfFormAssignmentDto, UpdateCfFormAssignmentDto } from './dto/cf-form-assignment.dto';
 import { CreateCfTermsDto, UpdateCfTermsDto } from './dto/cf-terms.dto';
-import { CreateCfMonitoringDto, UpdateCfMonitoringDto } from './dto/cf-monitoring.dto';
 import { CreateCfContractDto, UpdateCfContractDto } from './dto/cf-contract.dto';
 import { CreateCfDocumentDto, CreateCfCommunicationDto, CreateCfFinalReportDto, CreateCfActivityDto } from './dto/cf-records.dto';
 import { CreateCfFormTemplateDto, UpdateCfFormTemplateDto } from './dto/cf-form-template.dto';
@@ -396,16 +395,12 @@ export class ClientflowService {
         },
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma.cfMonitoringItem.findMany({
+      this.prisma.cfEnrollmentMonitoring.findMany({
         where: {
           organizationId: orgId,
-          programId,
-          OR: [
-            { enrollmentId: { in: enrollmentIds } },
-            { enrollmentId: null, clientId: { in: clientIds } },
-          ],
+          enrollmentId: { in: enrollmentIds },
         },
-        orderBy: { dueDate: 'asc' },
+        orderBy: { nextReviewAt: 'asc' },
       }),
     ]);
 
@@ -499,7 +494,7 @@ export class ClientflowService {
         forms: participantForms,
         terms: terms.filter(matchesEnrollment),
         contracts: contracts.filter(matchesEnrollment),
-        monitoring: monitoring.filter(matchesEnrollment),
+        monitoring: monitoring.filter((record) => record.enrollmentId === enrollment.id),
       }];
     });
 
@@ -768,11 +763,6 @@ export class ClientflowService {
     return this.prisma.cfTerms.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'desc' } });
   }
 
-  async listAllMonitoring() {
-    const orgId = await this.getOrgId();
-    return this.prisma.cfMonitoringItem.findMany({ where: { organizationId: orgId }, orderBy: { dueDate: 'asc' } });
-  }
-
   async listAllContracts() {
     const orgId = await this.getOrgId();
     return this.prisma.cfContract.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'desc' } });
@@ -839,50 +829,6 @@ export class ClientflowService {
     const existing = await this.prisma.cfTerms.findFirst({ where: { id, organizationId: orgId } });
     if (!existing) throw new NotFoundException('Terms not found.');
     return this.prisma.cfTerms.update({ where: { id }, data: dto });
-  }
-
-  // ─── Monitoring ─────────────────────────────────────────────────────────────
-
-  async listMonitoring(clientId: string, enrollmentId?: string) {
-    const orgId = await this.getOrgId();
-    return this.prisma.cfMonitoringItem.findMany({
-      where: { clientId, organizationId: orgId, ...(enrollmentId && { enrollmentId }) },
-      orderBy: { dueDate: 'asc' },
-    });
-  }
-
-  async createMonitoringItem(clientId: string, dto: CreateCfMonitoringDto) {
-    const orgId = await this.getOrgId();
-    await this.verifyClientBelongsToOrg(clientId, orgId);
-    await this.verifyEnrollmentScope(dto.enrollmentId, clientId, dto.programId, orgId);
-    return this.prisma.cfMonitoringItem.create({
-      data: {
-        organizationId: orgId,
-        clientId,
-        enrollmentId: dto.enrollmentId,
-        programId: dto.programId,
-        type: dto.type,
-        dueDate: new Date(dto.dueDate),
-        status: dto.status ?? 'Scheduled',
-        assignedStaff: dto.assignedStaff,
-        notes: dto.notes ?? '',
-      },
-    });
-  }
-
-  async updateMonitoringItem(id: string, dto: UpdateCfMonitoringDto) {
-    const orgId = await this.getOrgId();
-    const existing = await this.prisma.cfMonitoringItem.findFirst({ where: { id, organizationId: orgId } });
-    if (!existing) throw new NotFoundException('Monitoring item not found.');
-    return this.prisma.cfMonitoringItem.update({
-      where: { id },
-      data: {
-        ...(dto.status !== undefined && { status: dto.status }),
-        ...(dto.dueDate !== undefined && { dueDate: new Date(dto.dueDate) }),
-        ...(dto.notes !== undefined && { notes: dto.notes }),
-        ...(dto.completedAt !== undefined && { completedAt: dto.completedAt ? new Date(dto.completedAt) : null }),
-      },
-    });
   }
 
   // ─── Contracts ──────────────────────────────────────────────────────────────
@@ -1102,7 +1048,9 @@ export class ClientflowService {
       const removedDocuments = await tx.cfDocument.deleteMany({ where: demoWhere });
       const removedReports = await tx.cfFinalReport.deleteMany({ where: demoWhere });
       const removedContracts = await tx.cfContract.deleteMany({ where: demoWhere });
-      const removedMonitoring = await tx.cfMonitoringItem.deleteMany({ where: demoWhere });
+      const removedMonitoringEvidence = await tx.cfEnrollmentMonitoringEvidence.deleteMany({ where: demoWhere });
+      const removedMonitoringHistory = await tx.cfEnrollmentMonitoringHistory.deleteMany({ where: demoWhere });
+      const removedMonitoring = await tx.cfEnrollmentMonitoring.deleteMany({ where: demoWhere });
       const removedTerms = await tx.cfTerms.deleteMany({ where: demoWhere });
       const removedAssignments = await tx.cfFormAssignment.deleteMany({ where: demoWhere });
       const removedEnrollments = await tx.cfProgramEnrollment.deleteMany({ where: demoWhere });
@@ -1119,7 +1067,7 @@ export class ClientflowService {
         tasks: removedTasks.count,
         formAssignments: removedAssignments.count,
         terms: removedTerms.count,
-        monitoring: removedMonitoring.count,
+        monitoring: removedMonitoring.count + removedMonitoringHistory.count + removedMonitoringEvidence.count,
         contracts: removedContracts.count,
         documents: removedDocuments.count,
         communications: removedCommunications.count,
@@ -1241,7 +1189,9 @@ export class ClientflowService {
       const removedDocuments = await tx.cfDocument.deleteMany({ where: demoWhere });
       const removedReports = await tx.cfFinalReport.deleteMany({ where: demoWhere });
       const removedContracts = await tx.cfContract.deleteMany({ where: demoWhere });
-      const removedMonitoring = await tx.cfMonitoringItem.deleteMany({ where: demoWhere });
+      const removedMonitoringEvidence = await tx.cfEnrollmentMonitoringEvidence.deleteMany({ where: demoWhere });
+      const removedMonitoringHistory = await tx.cfEnrollmentMonitoringHistory.deleteMany({ where: demoWhere });
+      const removedMonitoring = await tx.cfEnrollmentMonitoring.deleteMany({ where: demoWhere });
       const removedTerms = await tx.cfTerms.deleteMany({ where: demoWhere });
       const removedAssignments = await tx.cfFormAssignment.deleteMany({ where: demoWhere });
       const removedEnrollments = await tx.cfProgramEnrollment.deleteMany({ where: demoWhere });
@@ -1258,7 +1208,7 @@ export class ClientflowService {
         tasks: removedTasks.count,
         formAssignments: removedAssignments.count,
         terms: removedTerms.count,
-        monitoring: removedMonitoring.count,
+        monitoring: removedMonitoring.count + removedMonitoringHistory.count + removedMonitoringEvidence.count,
         contracts: removedContracts.count,
         documents: removedDocuments.count,
         communications: removedCommunications.count,

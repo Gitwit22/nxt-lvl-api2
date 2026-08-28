@@ -15,7 +15,10 @@ import {
 import { CreateCfFormTemplateDto, UpdateCfFormTemplateDto } from './dto/cf-form-template.dto';
 import { TransitionToLiveModeDto } from './dto/transition-to-live-mode.dto';
 import { CreateCfTermsDto, UpdateCfTermsDto } from './dto/cf-terms.dto';
-import { CreateCfMonitoringDto, UpdateCfMonitoringDto } from './dto/cf-monitoring.dto';
+import {
+  CreateCfEnrollmentMonitoringDto,
+  RecordCfEnrollmentMonitoringResultDto,
+} from './dto/cf-enrollment-monitoring.dto';
 import { CreateCfContractDto, UpdateCfContractDto } from './dto/cf-contract.dto';
 import {
   CreateCfDocumentDto,
@@ -25,6 +28,7 @@ import {
 } from './dto/cf-records.dto';
 import { CreateCfEnrollmentDto, UpdateCfEnrollmentDto } from './dto/cf-enrollment.dto';
 import { EnrollmentService } from './enrollment.service';
+import { MonitoringService } from './monitoring.service';
 
 @Controller('admin/cf')
 @UseGuards(AdminJwtGuard)
@@ -32,6 +36,7 @@ export class ClientflowController {
   constructor(
     private readonly svc: ClientflowService,
     private readonly enrollments: EnrollmentService,
+    private readonly monitoring: MonitoringService,
   ) {}
 
   // ─── Clients ────────────────────────────────────────────────────────────────
@@ -135,7 +140,9 @@ export class ClientflowController {
   listAllTerms() { return this.svc.listAllTerms(); }
 
   @Get('monitoring')
-  listAllMonitoring() { return this.svc.listAllMonitoring(); }
+  listAllMonitoring(@Query('enrollmentId') enrollmentId?: string) {
+    return this.monitoring.list(enrollmentId);
+  }
 
   @Get('contracts')
   listAllContracts() { return this.svc.listAllContracts(); }
@@ -165,17 +172,20 @@ export class ClientflowController {
 
   // ─── Monitoring ─────────────────────────────────────────────────────────────
 
-  @Get('clients/:clientId/monitoring')
-  listMonitoring(
-    @Param('clientId') clientId: string,
-    @Query('enrollmentId') enrollmentId?: string,
-  ) { return this.svc.listMonitoring(clientId, enrollmentId); }
+  @Post('enrollments/:enrollmentId/monitoring')
+  createEnrollmentMonitoring(
+    @Param('enrollmentId') enrollmentId: string,
+    @Body() dto: CreateCfEnrollmentMonitoringDto,
+  ) { return this.monitoring.create(enrollmentId, dto); }
 
-  @Post('clients/:clientId/monitoring')
-  createMonitoringItem(@Param('clientId') clientId: string, @Body() dto: CreateCfMonitoringDto) { return this.svc.createMonitoringItem(clientId, dto); }
+  @Post('enrollment-monitoring/:id/results')
+  recordMonitoringResult(
+    @Param('id') id: string,
+    @Body() dto: RecordCfEnrollmentMonitoringResultDto,
+  ) { return this.monitoring.recordResult(id, dto); }
 
-  @Patch('monitoring/:id')
-  updateMonitoringItem(@Param('id') id: string, @Body() dto: UpdateCfMonitoringDto) { return this.svc.updateMonitoringItem(id, dto); }
+  @Get('enrollment-monitoring/:id/history')
+  getMonitoringHistory(@Param('id') id: string) { return this.monitoring.history(id); }
 
   // ─── Contracts ──────────────────────────────────────────────────────────────
 

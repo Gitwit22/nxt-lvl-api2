@@ -20,35 +20,114 @@ enum CfEnrollmentStatus {
   withdrawn
 }
 
+enum CfTemplateVersionStatus {
+  draft
+  published
+  archived
+}
+
+enum CfProgressCalculationMethod {
+  equal_weight
+  custom_weight
+}
+
+enum CfProgramProgressTrackStatus {
+  active
+  inactive
+  archived
+}
+
+enum CfEnrollmentProgressTrackStatus {
+  not_started
+  in_progress
+  completed
+  skipped
+}
+
+enum CfEnrollmentProgressCheckpointStatus {
+  not_started
+  in_progress
+  completed
+  blocked
+  skipped
+}
+
+enum CfEnrollmentGoalStatus {
+  not_started
+  in_progress
+  achieved
+  partially_achieved
+  blocked
+  abandoned
+}
+
+enum CfMonitoringFrequency {
+  once
+  weekly
+  monthly
+  quarterly
+  annually
+  custom
+}
+
+enum CfMonitoringComplianceStatus {
+  pending
+  compliant
+  partially_compliant
+  non_compliant
+  not_applicable
+}
+
+enum CfEnrollmentRiskLevel {
+  low
+  medium
+  high
+  critical
+}
+
+enum CfClientResponsiveness {
+  responsive
+  inconsistent
+  unresponsive
+  unknown
+}
+
+enum CfOutcomeAchieved {
+  yes
+  partial
+  no
+  pending
+}
+
 model CfClient {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   organizationId     String
   businessName       String
   primaryContactName String
   email              String
   phone              String
   website            String?
-  socialLinks        Json     @default("[]")
+  socialLinks        Json      @default("[]")
   programId          String?
-  status             String   @default("New Intake")
+  status             String    @default("New Intake")
   profileType        String?
   relationshipType   String?
   lifecycleStatus    String?
   assignedStaff      String
   assignedUserId     String?
-  intakeSource       String   @default("admin_created")
+  intakeSource       String    @default("admin_created")
   source             String?
   nextFollowUpDate   DateTime?
   convertedAt        DateTime?
-  isDemo             Boolean  @default(false)
-  isArchived         Boolean  @default(false)
+  isDemo             Boolean   @default(false)
+  isArchived         Boolean   @default(false)
   archiveReason      String?
   finalStatus        String?
   archivedAt         DateTime?
   intake             Json
   snapchat           Json?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([organizationId])
   @@index([organizationId, isDemo])
@@ -161,28 +240,6 @@ model CfTerms {
   @@index([enrollmentId])
 }
 
-model CfMonitoringItem {
-  id             String    @id @default(cuid())
-  organizationId String
-  clientId       String
-  enrollmentId   String?
-  programId      String
-  type           String
-  dueDate        DateTime
-  status         String    @default("Scheduled")
-  assignedStaff  String
-  notes          String    @default("")
-  completedAt    DateTime?
-  isDemo         Boolean   @default(false)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  @@index([organizationId])
-  @@index([organizationId, isDemo])
-  @@index([organizationId, clientId])
-  @@index([enrollmentId])
-}
-
 model CfContract {
   id             String    @id @default(cuid())
   organizationId String
@@ -289,25 +346,35 @@ model CfActivityLog {
 }
 
 model CfProgramEnrollment {
-  id                 String             @id @default(cuid())
-  organizationId     String
-  clientId           String
-  programId          String
-  status             CfEnrollmentStatus @default(interested)
-  assignedUserId     String?
-  assignedStaff      String?
-  startDate          DateTime?
-  nextAction         String?
-  nextActionDate     DateTime?
-  progressPercentage Int                @default(0)
-  completedAt        DateTime?
-  withdrawnAt        DateTime?
-  onHoldReason       String?
-  isDemo             Boolean            @default(false)
-  isArchived         Boolean            @default(false)
-  archivedAt         DateTime?
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  id                   String                 @id @default(cuid())
+  organizationId       String
+  clientId             String
+  programId            String
+  status               CfEnrollmentStatus     @default(interested)
+  assignedUserId       String?
+  assignedStaff        String?
+  startDate            DateTime?
+  nextAction           String?
+  nextActionDate       DateTime?
+  progressPercentage   Int                    @default(0)
+  targetCompletionDate DateTime?
+  currentGoalId        String?
+  lastProgressUpdate   DateTime?
+  clientResponsiveness CfClientResponsiveness @default(unknown)
+  currentBlockers      String?
+  riskLevel            CfEnrollmentRiskLevel  @default(low)
+  staffProgressNotes   String?
+  meetingsAttended     Int                    @default(0)
+  outcomeAchieved      CfOutcomeAchieved      @default(pending)
+  finalOutcomeSummary  String?
+  completedAt          DateTime?
+  withdrawnAt          DateTime?
+  onHoldReason         String?
+  isDemo               Boolean                @default(false)
+  isArchived           Boolean                @default(false)
+  archivedAt           DateTime?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
 
   @@unique([clientId, programId])
   @@index([organizationId])
@@ -317,14 +384,14 @@ model CfProgramEnrollment {
 }
 
 model CfEnrollmentStatusHistory {
-  id              String             @id @default(cuid())
+  id              String              @id @default(cuid())
   organizationId  String
   enrollmentId    String
   previousStatus  CfEnrollmentStatus?
   newStatus       CfEnrollmentStatus
   changedByUserId String?
   reason          String?
-  createdAt       DateTime           @default(now())
+  createdAt       DateTime            @default(now())
 
   @@index([organizationId, enrollmentId])
   @@index([enrollmentId, createdAt])
@@ -395,24 +462,331 @@ model CfIntakeSubmissionProgram {
 }
 
 model CfTask {
-  id             String    @id @default(cuid())
-  organizationId String
-  enrollmentId   String
-  clientId       String
-  title          String
-  description    String?
-  status         String    @default("open")
-  priority       String    @default("medium")
-  assignedUserId String?
-  assignedStaff  String?
-  dueDate        DateTime?
-  completedAt    DateTime?
-  isDemo         Boolean   @default(false)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id                     String    @id @default(cuid())
+  organizationId         String
+  enrollmentId           String
+  clientId               String
+  enrollmentCheckpointId String?
+  title                  String
+  description            String?
+  status                 String    @default("open")
+  priority               String    @default("medium")
+  assignedUserId         String?
+  assignedStaff          String?
+  dueDate                DateTime?
+  completedAt            DateTime?
+  isDemo                 Boolean   @default(false)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   @@index([organizationId, enrollmentId])
+  @@index([enrollmentCheckpointId])
   @@index([organizationId, clientId])
   @@index([organizationId, isDemo])
   @@index([dueDate])
+}
+
+model CfProgramProgressTemplateVersion {
+  id                     String                      @id @default(cuid())
+  organizationId         String
+  programId              String
+  version                Int
+  status                 CfTemplateVersionStatus     @default(draft)
+  trackCalculationMethod CfProgressCalculationMethod @default(equal_weight)
+  publishedAt            DateTime?
+  publishedByUserId      String?
+  isDemo                 Boolean                     @default(false)
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+
+  @@unique([organizationId, programId, version])
+  @@index([organizationId, programId, status])
+  @@index([organizationId, isDemo])
+}
+
+model CfProgramProgressTrack {
+  id                String                       @id @default(cuid())
+  organizationId    String
+  programId         String
+  templateVersionId String
+  name              String
+  description       String?
+  position          Int
+  status            CfProgramProgressTrackStatus @default(active)
+  calculationMethod CfProgressCalculationMethod  @default(equal_weight)
+  weight            Decimal?                     @db.Decimal(5, 2)
+  isDemo            Boolean                      @default(false)
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+
+  @@unique([templateVersionId, position])
+  @@index([organizationId, programId])
+  @@index([organizationId, templateVersionId, status])
+  @@index([organizationId, isDemo])
+}
+
+model CfProgramProgressCheckpoint {
+  id                   String   @id @default(cuid())
+  organizationId       String
+  programId            String
+  templateVersionId    String
+  trackId              String
+  name                 String
+  description          String?
+  position             Int
+  required             Boolean  @default(true)
+  weight               Decimal? @db.Decimal(5, 2)
+  defaultDueDays       Int?
+  evidenceRequired     Boolean  @default(false)
+  evidenceInstructions String?
+  isDemo               Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([trackId, position])
+  @@index([organizationId, programId])
+  @@index([organizationId, templateVersionId])
+  @@index([organizationId, trackId])
+  @@index([organizationId, isDemo])
+}
+
+model CfProgramGoalCategory {
+  id             String   @id @default(cuid())
+  organizationId String
+  programId      String
+  name           String
+  position       Int
+  active         Boolean  @default(true)
+  isDemo         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, programId, name])
+  @@index([organizationId, programId, position])
+  @@index([organizationId, isDemo])
+}
+
+model CfProgramMonitoringTemplateVersion {
+  id                String                  @id @default(cuid())
+  organizationId    String
+  programId         String
+  version           Int
+  status            CfTemplateVersionStatus @default(draft)
+  publishedAt       DateTime?
+  publishedByUserId String?
+  isDemo            Boolean                 @default(false)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@unique([organizationId, programId, version])
+  @@index([organizationId, programId, status])
+  @@index([organizationId, isDemo])
+}
+
+model CfMonitoringRequirement {
+  id                 String                @id @default(cuid())
+  organizationId     String
+  programId          String
+  templateVersionId  String
+  name               String
+  description        String?
+  position           Int
+  frequency          CfMonitoringFrequency
+  customIntervalDays Int?
+  expectedValue      Decimal?              @db.Decimal(18, 2)
+  unit               String?
+  evidenceRequired   Boolean               @default(false)
+  active             Boolean               @default(true)
+  isDemo             Boolean               @default(false)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  @@unique([templateVersionId, position])
+  @@index([organizationId, programId])
+  @@index([organizationId, templateVersionId, active])
+  @@index([organizationId, isDemo])
+}
+
+model CfEnrollmentProgressPlan {
+  id                      String    @id @default(cuid())
+  organizationId          String
+  enrollmentId            String
+  sourceTemplateVersionId String?
+  revision                Int
+  isCurrent               Boolean   @default(true)
+  replacedAt              DateTime?
+  replacedByUserId        String?
+  isDemo                  Boolean   @default(false)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@unique([enrollmentId, revision])
+  @@index([organizationId, enrollmentId, isCurrent])
+  @@index([organizationId, isDemo])
+}
+
+model CfEnrollmentProgressTrack {
+  id                   String                          @id @default(cuid())
+  organizationId       String
+  enrollmentId         String
+  progressPlanId       String
+  sourceProgramTrackId String?
+  name                 String
+  description          String?
+  position             Int
+  calculationMethod    CfProgressCalculationMethod
+  weight               Decimal?                        @db.Decimal(5, 2)
+  progressPercent      Decimal                         @default(0) @db.Decimal(5, 2)
+  status               CfEnrollmentProgressTrackStatus @default(not_started)
+  completedAt          DateTime?
+  isDemo               Boolean                         @default(false)
+  createdAt            DateTime                        @default(now())
+  updatedAt            DateTime                        @updatedAt
+
+  @@unique([progressPlanId, position])
+  @@index([organizationId, enrollmentId])
+  @@index([organizationId, progressPlanId])
+  @@index([organizationId, isDemo])
+}
+
+model CfEnrollmentProgressCheckpoint {
+  id                        String                               @id @default(cuid())
+  organizationId            String
+  enrollmentId              String
+  enrollmentTrackId         String
+  sourceProgramCheckpointId String?
+  name                      String
+  description               String?
+  position                  Int
+  required                  Boolean                              @default(true)
+  weight                    Decimal?                             @db.Decimal(5, 2)
+  status                    CfEnrollmentProgressCheckpointStatus @default(not_started)
+  dueDate                   DateTime?
+  completedAt               DateTime?
+  completedByUserId         String?
+  evidenceRequired          Boolean                              @default(false)
+  evidenceInstructions      String?
+  notes                     String?
+  skipReason                String?
+  isDemo                    Boolean                              @default(false)
+  createdAt                 DateTime                             @default(now())
+  updatedAt                 DateTime                             @updatedAt
+
+  @@unique([enrollmentTrackId, position])
+  @@index([organizationId, enrollmentId, status])
+  @@index([organizationId, enrollmentTrackId])
+  @@index([organizationId, dueDate])
+  @@index([organizationId, isDemo])
+}
+
+model CfEnrollmentCheckpointEvidence {
+  id                     String   @id @default(cuid())
+  organizationId         String
+  enrollmentId           String
+  enrollmentCheckpointId String
+  documentId             String
+  addedByUserId          String?
+  isDemo                 Boolean  @default(false)
+  createdAt              DateTime @default(now())
+
+  @@unique([enrollmentCheckpointId, documentId])
+  @@index([organizationId, enrollmentId])
+  @@index([organizationId, documentId])
+  @@index([organizationId, isDemo])
+}
+
+model CfEnrollmentGoal {
+  id              String                 @id @default(cuid())
+  organizationId  String
+  enrollmentId    String
+  categoryId      String?
+  name            String
+  description     String?
+  category        String?
+  baselineValue   Decimal?               @db.Decimal(18, 2)
+  targetValue     Decimal?               @db.Decimal(18, 2)
+  currentValue    Decimal?               @db.Decimal(18, 2)
+  unit            String?
+  targetDate      DateTime?
+  status          CfEnrollmentGoalStatus @default(not_started)
+  progressPercent Decimal?               @db.Decimal(5, 2)
+  notes           String?
+  completedAt     DateTime?
+  isDemo          Boolean                @default(false)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@index([organizationId, enrollmentId, status])
+  @@index([organizationId, categoryId])
+  @@index([organizationId, isDemo])
+}
+
+model CfEnrollmentMonitoring {
+  id                      String                       @id @default(cuid())
+  organizationId          String
+  enrollmentId            String
+  monitoringRequirementId String?
+  name                    String
+  description             String?
+  frequency               CfMonitoringFrequency
+  customIntervalDays      Int?
+  expectedValue           Decimal?                     @db.Decimal(18, 2)
+  actualValue             Decimal?                     @db.Decimal(18, 2)
+  unit                    String?
+  complianceStatus        CfMonitoringComplianceStatus @default(pending)
+  lastReviewedAt          DateTime?
+  nextReviewAt            DateTime?
+  assignedReviewerId      String?
+  followUpRequired        Boolean                      @default(false)
+  evidenceRequired        Boolean                      @default(false)
+  notes                   String?
+  active                  Boolean                      @default(true)
+  isDemo                  Boolean                      @default(false)
+  createdAt               DateTime                     @default(now())
+  updatedAt               DateTime                     @updatedAt
+
+  @@index([organizationId, enrollmentId, active])
+  @@index([organizationId, nextReviewAt])
+  @@index([organizationId, complianceStatus])
+  @@index([organizationId, isDemo])
+}
+
+model CfEnrollmentMonitoringHistory {
+  id                     String                       @id @default(cuid())
+  organizationId         String
+  enrollmentId           String
+  enrollmentMonitoringId String
+  expectedValue          Decimal?                     @db.Decimal(18, 2)
+  actualValue            Decimal?                     @db.Decimal(18, 2)
+  unit                   String?
+  complianceStatus       CfMonitoringComplianceStatus
+  reviewedAt             DateTime                     @default(now())
+  nextReviewAt           DateTime?
+  reviewedByUserId       String?
+  followUpRequired       Boolean                      @default(false)
+  notes                  String?
+  previousValue          Json?
+  newValue               Json?
+  isDemo                 Boolean                      @default(false)
+  createdAt              DateTime                     @default(now())
+
+  @@index([organizationId, enrollmentId])
+  @@index([organizationId, enrollmentMonitoringId, reviewedAt])
+  @@index([organizationId, isDemo])
+}
+
+model CfEnrollmentMonitoringEvidence {
+  id                            String   @id @default(cuid())
+  organizationId                String
+  enrollmentId                  String
+  enrollmentMonitoringHistoryId String
+  documentId                    String
+  addedByUserId                 String?
+  isDemo                        Boolean  @default(false)
+  createdAt                     DateTime @default(now())
+
+  @@unique([enrollmentMonitoringHistoryId, documentId])
+  @@index([organizationId, enrollmentId])
+  @@index([organizationId, documentId])
+  @@index([organizationId, isDemo])
 }

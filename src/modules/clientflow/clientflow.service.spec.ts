@@ -14,7 +14,7 @@ describe('ClientflowService.getProgramDetail', () => {
     cfFormAssignment: { findMany: jest.fn() },
     cfTerms: { findMany: jest.fn() },
     cfContract: { findMany: jest.fn() },
-    cfMonitoringItem: { findMany: jest.fn() },
+    cfEnrollmentMonitoring: { findMany: jest.fn() },
     cfIntakeSubmission: { findMany: jest.fn() },
     cfIntakeSubmissionSnapshot: { findMany: jest.fn() },
     cfFormTemplate: { findMany: jest.fn() },
@@ -41,7 +41,7 @@ describe('ClientflowService.getProgramDetail', () => {
     prisma.cfFormAssignment.findMany.mockResolvedValue([]);
     prisma.cfTerms.findMany.mockResolvedValue([]);
     prisma.cfContract.findMany.mockResolvedValue([]);
-    prisma.cfMonitoringItem.findMany.mockResolvedValue([]);
+    prisma.cfEnrollmentMonitoring.findMany.mockResolvedValue([]);
     prisma.cfIntakeSubmission.findMany.mockResolvedValue([]);
     prisma.cfIntakeSubmissionSnapshot.findMany.mockResolvedValue([]);
     prisma.cfFormTemplate.findMany.mockResolvedValue([]);
