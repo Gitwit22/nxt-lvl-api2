@@ -104,7 +104,7 @@ All Phase 1 and Phase 2 infrastructure has been implemented and is ready for tes
   - Password: 4755Dett
   
 - [x] **EA Management** (org_admin) - Organization Admin
-  - Email: eammanagementllc@gmail.com
+  - Email: eamanagementllc@gmail.com
   - Password: mbba2026
 
 **Seed File**: [prisma/seed.ts](../prisma/seed.ts)

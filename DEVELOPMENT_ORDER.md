@@ -98,7 +98,7 @@ Use individual accounts (not one shared company login) with proper role-based ac
 | Email | Name | Role | Purpose | Password |
 |-------|------|------|---------|----------|
 | `nxtlvltechllc@gmail.com` | NXT LVL Tech | `super_admin` | Platform Admin | `4755Dett` |
-| `eammanagementllc@gmail.com` | EA Management | `org_admin` | Organization Admin | `mbba2026` |
+| `eamanagementllc@gmail.com` | EA Management | `org_admin` | Organization Admin | `mbba2026` |
 
 **Location**: [prisma/seed.ts](prisma/seed.ts#L174-L244)
 

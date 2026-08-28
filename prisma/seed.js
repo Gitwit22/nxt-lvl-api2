@@ -153,7 +153,7 @@ async function main() {
   });
 
   await prisma.adminUser.upsert({
-    where: { email: 'eammanagementllc@gmail.com' },
+    where: { email: 'eamanagementllc@gmail.com' },
     update: {
       organizationId: organization.id,
       isActive: true,
@@ -162,7 +162,7 @@ async function main() {
     },
     create: {
       organizationId: organization.id,
-      email: 'eammanagementllc@gmail.com',
+      email: 'eamanagementllc@gmail.com',
       passwordHash: organizationAdminPassword,
       role: 'org_admin',
       firstName: 'EA Management',

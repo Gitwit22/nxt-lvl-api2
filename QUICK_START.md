@@ -78,7 +78,7 @@ npm run prisma:seed
 
 🔐 Test Credentials:
    NXT LVL Tech: nxtlvltechllc@gmail.com / 4755Dett
-   EA Management: eammanagementllc@gmail.com / mbba2026
+  EA Management: eamanagementllc@gmail.com / mbba2026
 
 ✨ Seeding complete!
 ```
@@ -215,7 +215,7 @@ curl -X POST http://localhost:3000/auth/login \
 curl -X POST http://localhost:3000/auth/login \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "eammanagementllc@gmail.com",
+    "email": "eamanagementllc@gmail.com",
     "password": "mbba2026"
   }'
 ```

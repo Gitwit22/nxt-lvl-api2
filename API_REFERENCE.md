@@ -26,7 +26,7 @@ The `accessToken` is obtained from the login endpoint. The `x-admin-id` is the a
 | Email | Password | Role | Purpose |
 |-------|----------|------|---------|
 | `nxtlvltechllc@gmail.com` | `4755Dett` | super_admin | Platform Admin |
-| `eammanagementllc@gmail.com` | `mbba2026` | org_admin | Organization Admin |
+| `eamanagementllc@gmail.com` | `mbba2026` | org_admin | Organization Admin |
 
 ---
 
@@ -473,7 +473,7 @@ Get list of all admin users in the organization.
   },
   {
     "id": "admin_2",
-    "email": "eammanagementllc@gmail.com",
+    "email": "eamanagementllc@gmail.com",
     "firstName": "EA",
     "lastName": "Management",
     "role": "org_admin",
@@ -541,10 +541,10 @@ Disable a user account (prevents login).
 ```json
 {
   "success": true,
-  "message": "User eammanagementllc@gmail.com has been disabled.",
+  "message": "User eamanagementllc@gmail.com has been disabled.",
   "admin": {
     "id": "admin_2",
-    "email": "eammanagementllc@gmail.com",
+    "email": "eamanagementllc@gmail.com",
     "firstName": "EA",
     "lastName": "Management",
     "isActive": false
@@ -575,10 +575,10 @@ Re-enable a disabled user account.
 ```json
 {
   "success": true,
-  "message": "User eammanagementllc@gmail.com has been enabled.",
+  "message": "User eamanagementllc@gmail.com has been enabled.",
   "admin": {
     "id": "admin_2",
-    "email": "eammanagementllc@gmail.com",
+    "email": "eamanagementllc@gmail.com",
     "firstName": "EA",
     "lastName": "Management",
     "isActive": true
