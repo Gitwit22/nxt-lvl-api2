@@ -8,6 +8,76 @@ datasource db {
   url      = env("CLIENTFLOW_DATABASE_URL")
 }
 
+enum AdminRole {
+  super_admin
+  org_admin
+  reviewer
+}
+
+model Organization {
+  id               String      @id @default(cuid())
+  name             String
+  slug             String      @unique
+  status           String      @default("active")
+  settings         Json?
+  liveMode         Boolean     @default(false)
+  demoRemovedAt    DateTime?
+  principalAdminId String?     @unique
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  adminUsers       AdminUser[] @relation("OrganizationMembers")
+  principalAdmin   AdminUser?  @relation("OrganizationPrincipal", fields: [principalAdminId], references: [id], onDelete: SetNull)
+}
+
+model AdminUser {
+  id             String    @id @default(cuid())
+  organizationId String
+  email          String    @unique
+  passwordHash   String
+  firstName      String?
+  lastName       String?
+  role           AdminRole @default(reviewer)
+  isActive       Boolean   @default(true)
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization     @relation("OrganizationMembers", fields: [organizationId], references: [id], onDelete: Cascade)
+  principalOf  Organization?    @relation("OrganizationPrincipal")
+  invitation   AdminInvitation?
+  sessions     AuthSession[]
+
+  @@index([organizationId, role])
+}
+
+model AdminInvitation {
+  id          String    @id @default(cuid())
+  adminUserId String    @unique
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  adminUser AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
+}
+
+model AuthSession {
+  id          String    @id
+  adminUserId String
+  jti         String    @unique
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  adminUser AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@index([adminUserId, revokedAt])
+  @@index([expiresAt])
+}
+
 enum CfEnrollmentStatus {
   interested
   pending_review
