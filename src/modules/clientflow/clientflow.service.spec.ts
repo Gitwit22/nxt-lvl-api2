@@ -1,5 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
+import { Prisma } from '../../generated/clientflow';
 import type { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { NotificationsService } from '../notifications/notifications.service';
@@ -174,6 +175,46 @@ describe('ClientflowService.getProgramDetail', () => {
       contracts: [],
       monitoring: [],
     });
+  });
+
+  it('returns program details when the optional monitoring table is not deployed yet', async () => {
+    prisma.cfProgram.findFirst.mockResolvedValue({ id: 'program-1', name: 'Accelerator' });
+    prisma.cfProgramEnrollment.findMany.mockResolvedValue([{
+      id: 'enrollment-1',
+      clientId: 'client-1',
+      programId: 'program-1',
+      status: 'active',
+    }]);
+    prisma.cfClient.findMany.mockResolvedValue([{
+      id: 'client-1',
+      businessName: 'New Company',
+      primaryContactName: 'Alex Smith',
+      email: 'alex@example.com',
+      phone: '555-0101',
+    }]);
+    prisma.cfEnrollmentMonitoring.findMany.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Table does not exist', {
+        code: 'P2021',
+        clientVersion: '6.16.3',
+      }),
+    );
+
+    const result = await createService().getProgramDetail('program-1');
+
+    expect(result.participants[0].monitoring).toEqual([]);
+  });
+
+  it('does not hide unrelated monitoring database failures', async () => {
+    prisma.cfProgram.findFirst.mockResolvedValue({ id: 'program-1', name: 'Accelerator' });
+    prisma.cfEnrollmentMonitoring.findMany.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Query failed', {
+        code: 'P2002',
+        clientVersion: '6.16.3',
+      }),
+    );
+
+    await expect(createService().getProgramDetail('program-1'))
+      .rejects.toMatchObject({ code: 'P2002' });
   });
 
   it('does not reveal a missing or cross-organization program', async () => {

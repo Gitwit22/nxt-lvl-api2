@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, Scope, UnauthorizedException } from '@nestjs/common';
 import { REQUEST } from '@nestjs/core';
-import { Prisma } from '../../generated/clientflow';
+import { CfEnrollmentMonitoring, Prisma } from '../../generated/clientflow';
 import { compare } from 'bcrypt';
 import { randomBytes } from 'crypto';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
@@ -95,6 +95,13 @@ function jsonRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+function ignoreMissingMonitoringTable(error: unknown): CfEnrollmentMonitoring[] {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2021') {
+    return [];
+  }
+  throw error;
 }
 
 function detailFields(value: unknown): DetailField[] {
@@ -401,7 +408,7 @@ export class ClientflowService {
           enrollmentId: { in: enrollmentIds },
         },
         orderBy: { nextReviewAt: 'asc' },
-      }),
+      }).catch(ignoreMissingMonitoringTable),
     ]);
 
     const submissionIds = [...new Set(intakeLinks.map(({ intakeSubmissionId }) => intakeSubmissionId))];
