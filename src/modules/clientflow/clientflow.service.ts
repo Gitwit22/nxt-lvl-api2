@@ -1025,6 +1025,11 @@ export class ClientflowService {
   }
 
   private async deletePersistedDemoData(orgId: string) {
+    const [optionalSchema] = await this.prisma.$queryRaw<Array<{ available: boolean }>>(
+      Prisma.sql`SELECT to_regclass('"CfEnrollmentMonitoring"') IS NOT NULL AS available`,
+    );
+    const hasProgressMonitoringSchema = optionalSchema?.available === true;
+
     return this.prisma.$transaction(async (tx) => {
       const demoWhere = { organizationId: orgId, isDemo: true };
       const [demoAssignments, demoSubmissions, demoEnrollments] = await Promise.all([
@@ -1055,9 +1060,26 @@ export class ClientflowService {
       const removedDocuments = await tx.cfDocument.deleteMany({ where: demoWhere });
       const removedReports = await tx.cfFinalReport.deleteMany({ where: demoWhere });
       const removedContracts = await tx.cfContract.deleteMany({ where: demoWhere });
-      const removedMonitoringEvidence = await tx.cfEnrollmentMonitoringEvidence.deleteMany({ where: demoWhere });
-      const removedMonitoringHistory = await tx.cfEnrollmentMonitoringHistory.deleteMany({ where: demoWhere });
-      const removedMonitoring = await tx.cfEnrollmentMonitoring.deleteMany({ where: demoWhere });
+      let removedProgressMonitoring = 0;
+      if (hasProgressMonitoringSchema) {
+        const optionalRemovals = await Promise.all([
+          tx.cfEnrollmentCheckpointEvidence.deleteMany({ where: demoWhere }),
+          tx.cfEnrollmentProgressCheckpoint.deleteMany({ where: demoWhere }),
+          tx.cfEnrollmentProgressTrack.deleteMany({ where: demoWhere }),
+          tx.cfEnrollmentProgressPlan.deleteMany({ where: demoWhere }),
+          tx.cfEnrollmentGoal.deleteMany({ where: demoWhere }),
+          tx.cfEnrollmentMonitoringEvidence.deleteMany({ where: demoWhere }),
+          tx.cfEnrollmentMonitoringHistory.deleteMany({ where: demoWhere }),
+          tx.cfEnrollmentMonitoring.deleteMany({ where: demoWhere }),
+          tx.cfMonitoringRequirement.deleteMany({ where: demoWhere }),
+          tx.cfProgramMonitoringTemplateVersion.deleteMany({ where: demoWhere }),
+          tx.cfProgramProgressCheckpoint.deleteMany({ where: demoWhere }),
+          tx.cfProgramProgressTrack.deleteMany({ where: demoWhere }),
+          tx.cfProgramProgressTemplateVersion.deleteMany({ where: demoWhere }),
+          tx.cfProgramGoalCategory.deleteMany({ where: demoWhere }),
+        ]);
+        removedProgressMonitoring = optionalRemovals.reduce((total, result) => total + result.count, 0);
+      }
       const removedTerms = await tx.cfTerms.deleteMany({ where: demoWhere });
       const removedAssignments = await tx.cfFormAssignment.deleteMany({ where: demoWhere });
       const removedEnrollments = await tx.cfProgramEnrollment.deleteMany({ where: demoWhere });
@@ -1074,7 +1096,7 @@ export class ClientflowService {
         tasks: removedTasks.count,
         formAssignments: removedAssignments.count,
         terms: removedTerms.count,
-        monitoring: removedMonitoring.count + removedMonitoringHistory.count + removedMonitoringEvidence.count,
+        monitoring: removedProgressMonitoring,
         contracts: removedContracts.count,
         documents: removedDocuments.count,
         communications: removedCommunications.count,
@@ -1166,67 +1188,7 @@ export class ClientflowService {
     }) as unknown as LiveOrganizationState | null;
     if (!organization) throw new NotFoundException('Organization not found.');
 
-    const removed = await this.prisma.$transaction(async (tx) => {
-      const demoWhere = { organizationId: orgId, isDemo: true };
-      const [demoAssignments, demoSubmissions, demoEnrollments] = await Promise.all([
-        tx.cfFormAssignment.findMany({ where: demoWhere, select: { id: true } }),
-        tx.cfIntakeSubmission.findMany({ where: demoWhere, select: { id: true } }),
-        tx.cfProgramEnrollment.findMany({ where: demoWhere, select: { id: true } }),
-      ]);
-      const demoAssignmentIds = demoAssignments.map(({ id }) => id);
-      const demoSubmissionIds = demoSubmissions.map(({ id }) => id);
-      const demoEnrollmentIds = demoEnrollments.map(({ id }) => id);
-
-      const removedSubmissionPrograms = await tx.cfIntakeSubmissionProgram.deleteMany({
-        where: { organizationId: orgId, intakeSubmissionId: { in: demoSubmissionIds } },
-      });
-      const removedSubmissionSnapshots = await tx.cfIntakeSubmissionSnapshot.deleteMany({
-        where: { organizationId: orgId, intakeSubmissionId: { in: demoSubmissionIds } },
-      });
-      const removedRenderSessions = await tx.cfIntakeRenderSession.deleteMany({
-        where: { organizationId: orgId, formAssignmentId: { in: demoAssignmentIds } },
-      });
-      const removedSubmissions = await tx.cfIntakeSubmission.deleteMany({ where: demoWhere });
-      const removedEnrollmentHistory = await tx.cfEnrollmentStatusHistory.deleteMany({
-        where: { organizationId: orgId, enrollmentId: { in: demoEnrollmentIds } },
-      });
-      const removedTasks = await tx.cfTask.deleteMany({ where: demoWhere });
-      const removedActivity = await tx.cfActivityLog.deleteMany({ where: demoWhere });
-      const removedCommunications = await tx.cfCommunication.deleteMany({ where: demoWhere });
-      const removedDocuments = await tx.cfDocument.deleteMany({ where: demoWhere });
-      const removedReports = await tx.cfFinalReport.deleteMany({ where: demoWhere });
-      const removedContracts = await tx.cfContract.deleteMany({ where: demoWhere });
-      const removedMonitoringEvidence = await tx.cfEnrollmentMonitoringEvidence.deleteMany({ where: demoWhere });
-      const removedMonitoringHistory = await tx.cfEnrollmentMonitoringHistory.deleteMany({ where: demoWhere });
-      const removedMonitoring = await tx.cfEnrollmentMonitoring.deleteMany({ where: demoWhere });
-      const removedTerms = await tx.cfTerms.deleteMany({ where: demoWhere });
-      const removedAssignments = await tx.cfFormAssignment.deleteMany({ where: demoWhere });
-      const removedEnrollments = await tx.cfProgramEnrollment.deleteMany({ where: demoWhere });
-      const removedClients = await tx.cfClient.deleteMany({ where: demoWhere });
-
-      return {
-        clients: removedClients.count,
-        enrollments: removedEnrollments.count,
-        enrollmentHistory: removedEnrollmentHistory.count,
-        intakeSubmissions: removedSubmissions.count,
-        intakeSubmissionSnapshots: removedSubmissionSnapshots.count,
-        intakeSubmissionPrograms: removedSubmissionPrograms.count,
-        intakeRenderSessions: removedRenderSessions.count,
-        tasks: removedTasks.count,
-        formAssignments: removedAssignments.count,
-        terms: removedTerms.count,
-        monitoring: removedMonitoring.count + removedMonitoringHistory.count + removedMonitoringEvidence.count,
-        contracts: removedContracts.count,
-        documents: removedDocuments.count,
-        communications: removedCommunications.count,
-        finalReports: removedReports.count,
-        activity: removedActivity.count,
-      };
-    }, {
-      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      maxWait: 5_000,
-      timeout: 15_000,
-    });
+    const removed = await this.deletePersistedDemoData(orgId);
 
     const revokedAt = organization.demoRemovedAt ?? new Date();
     const updatedOrganization = await this.primaryPrisma.$transaction(async (tx) => {
