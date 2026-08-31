@@ -14,7 +14,7 @@ export const REFRESH_COOKIE_NAME = production
 const baseCookieOptions: CookieOptions = {
   httpOnly: true,
   secure: production,
-  sameSite: 'lax',
+  sameSite: production ? 'none' : 'lax',
   path: '/',
 };
 
