@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Header } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { PublicFormService } from './public-form.service';
 import { SubmitPublicFormDto } from './dto/submit-public-form.dto';
@@ -8,6 +8,9 @@ export class PublicFormController {
   constructor(private readonly svc: PublicFormService) {}
 
   @Get(':token')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+  @Header('Pragma', 'no-cache')
+  @Header('Expires', '0')
   getForm(@Param('token') token: string) {
     return this.svc.getPublicForm(token);
   }

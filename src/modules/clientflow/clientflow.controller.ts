@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, Param, Patch, Post, Query, UseGuards,
+  Body, Controller, Get, Param, Patch, Post, Query, UseGuards, Header,
 } from '@nestjs/common';
 import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
 import { OrgAdminGuard } from '../../common/guards/org-admin.guard';
@@ -96,17 +96,26 @@ export class ClientflowController {
   // ─── Form Templates ─────────────────────────────────────────────────────────
 
   @Get('form-templates')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+  @Header('Pragma', 'no-cache')
+  @Header('Expires', '0')
   listFormTemplates() { return this.svc.listFormTemplates(); }
 
   @Post('form-templates')
   createFormTemplate(@Body() dto: CreateCfFormTemplateDto) { return this.svc.createFormTemplate(dto); }
 
   @Patch('form-templates/:id')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+  @Header('Pragma', 'no-cache')
+  @Header('Expires', '0')
   updateFormTemplate(@Param('id') id: string, @Body() dto: UpdateCfFormTemplateDto) { return this.svc.updateFormTemplate(id, dto); }
 
   // ─── Form Assignments ────────────────────────────────────────────────────────
 
   @Get('form-assignments')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+  @Header('Pragma', 'no-cache')
+  @Header('Expires', '0')
   listFormAssignments(
     @Query('clientId') clientId?: string,
     @Query('enrollmentId') enrollmentId?: string,
@@ -121,6 +130,9 @@ export class ClientflowController {
   }
 
   @Patch('form-assignments/:id')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+  @Header('Pragma', 'no-cache')
+  @Header('Expires', '0')
   updateFormAssignment(@Param('id') id: string, @Body() dto: UpdateCfFormAssignmentDto) { return this.svc.updateFormAssignment(id, dto); }
 
   // ─── Intake Submission History ────────────────────────────────────────────
