@@ -582,6 +582,9 @@ export class ClientflowService {
     const orgId = await this.getOrgId();
     const existing = await this.prisma.cfFormTemplate.findFirst({ where: { id, organizationId: orgId } });
     if (!existing) throw new NotFoundException('Form template not found.');
+    
+    console.log('[updateFormTemplate] Received update for:', { id, hasFields: !!dto.fields, fieldsCount: Array.isArray(dto.fields) ? dto.fields.length : 'N/A' });
+    
     validateTemplateFields(
       dto.scope ?? existing.scope,
       dto.programId !== undefined ? dto.programId : existing.programId,
@@ -603,6 +606,9 @@ export class ClientflowService {
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       },
     });
+    
+    console.log('[updateFormTemplate] Updated in DB, normalizing response');
+    
     // Normalize fields the same way listFormTemplates does for consistency
     return {
       ...updated,
