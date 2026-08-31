@@ -43,6 +43,26 @@ function isMissingTableError(error: unknown): boolean {
     && error.code === 'P2021';
 }
 
+function normalizeFormTemplate<T extends {
+  id: string;
+  programId: string | null;
+  scope: string;
+  fields: unknown;
+}>(template: T) {
+  const scope = template.scope === 'legacy' && template.programId !== null
+    ? 'program_section'
+    : template.scope;
+  return {
+    ...template,
+    scope,
+    fields: scope === 'master_core'
+      ? ensureCoreIntakeFields(template.fields)
+      : scope === 'program_section'
+        ? normalizeProgramFormFields(template.fields, template.programId, template.id)
+        : normalizePublicFormFields(template.fields),
+  };
+}
+
 function validateTemplateFields(
   scope: string,
   programId: string | null,
@@ -536,14 +556,7 @@ export class ClientflowService {
       where: { organizationId: orgId },
       orderBy: { createdAt: 'asc' },
     });
-    return templates.map((template) => ({
-      ...template,
-      fields: template.scope === 'master_core'
-        ? ensureCoreIntakeFields(template.fields)
-        : template.scope === 'program_section' || template.programId !== null
-          ? normalizeProgramFormFields(template.fields, template.programId, template.id)
-          : normalizePublicFormFields(template.fields),
-    }));
+    return templates.map(normalizeFormTemplate);
   }
 
   async createFormTemplate(dto: CreateCfFormTemplateDto) {
@@ -566,25 +579,14 @@ export class ClientflowService {
         isActive: dto.isActive ?? true,
       },
     });
-    // Normalize fields the same way listFormTemplates does for consistency
-    const scope = created.scope ?? 'legacy';
-    return {
-      ...created,
-      fields: scope === 'master_core'
-        ? ensureCoreIntakeFields(created.fields)
-        : scope === 'program_section' || created.programId !== null
-          ? normalizeProgramFormFields(created.fields, created.programId, created.id)
-          : normalizePublicFormFields(created.fields),
-    };
+    return normalizeFormTemplate(created);
   }
 
   async updateFormTemplate(id: string, dto: UpdateCfFormTemplateDto) {
     const orgId = await this.getOrgId();
     const existing = await this.prisma.cfFormTemplate.findFirst({ where: { id, organizationId: orgId } });
     if (!existing) throw new NotFoundException('Form template not found.');
-    
-    console.log('[updateFormTemplate] Received update for:', { id, hasFields: !!dto.fields, fieldsCount: Array.isArray(dto.fields) ? dto.fields.length : 'N/A' });
-    
+
     validateTemplateFields(
       dto.scope ?? existing.scope,
       dto.programId !== undefined ? dto.programId : existing.programId,
@@ -606,18 +608,8 @@ export class ClientflowService {
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       },
     });
-    
-    console.log('[updateFormTemplate] Updated in DB, normalizing response');
-    
-    // Normalize fields the same way listFormTemplates does for consistency
-    return {
-      ...updated,
-      fields: updated.scope === 'master_core'
-        ? ensureCoreIntakeFields(updated.fields)
-        : updated.scope === 'program_section' || updated.programId !== null
-          ? normalizeProgramFormFields(updated.fields, updated.programId, updated.id)
-          : normalizePublicFormFields(updated.fields),
-    };
+
+    return normalizeFormTemplate(updated);
   }
 
   // ─── Form Assignments ────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import { Prisma } from '../../generated/clientflow';
 import type { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { NotificationsService } from '../notifications/notifications.service';
+import type { FilesService } from '../files/files.service';
 import { ClientflowService } from './clientflow.service';
 
 jest.mock('bcrypt', () => ({ compare: jest.fn() }));
@@ -34,6 +35,7 @@ describe('ClientflowService.getProgramDetail', () => {
       prisma as unknown as ClientflowPrismaService,
       {} as PrismaService,
       {} as NotificationsService,
+      {} as FilesService,
     );
   }
 
@@ -229,6 +231,77 @@ describe('ClientflowService.getProgramDetail', () => {
   });
 });
 
+describe('ClientflowService form template persistence', () => {
+  const request = {
+    headers: { 'x-org-id': 'org-1' },
+    partition: { appUrl: 'https://clientflow.test' },
+  } as unknown as PartitionRequest;
+
+  it('returns the saved program questions unchanged after a reload', async () => {
+    const questions = [
+      {
+        id: 'growth-goal',
+        label: 'What is your growth goal?',
+        type: 'textarea',
+        required: true,
+        helpText: 'Describe the next twelve months.',
+      },
+      {
+        id: 'business-stage',
+        label: 'What stage is your business?',
+        type: 'select',
+        required: false,
+        options: ['Idea', 'Operating', 'Growing'],
+      },
+    ];
+    let persistedTemplate = {
+      id: 'form-inspired-detroit',
+      organizationId: 'org-1',
+      programId: 'prog-inspired-detroit',
+      scope: 'legacy',
+      version: 1,
+      sortOrder: 0,
+      name: 'Inspired Detroit Initiative Member Profile Form',
+      description: '',
+      fields: [] as unknown[],
+      emailTemplate: 'default',
+      internalNotes: null,
+      dueInDays: 7,
+      isActive: true,
+      createdAt: new Date('2026-08-31T12:00:00.000Z'),
+      updatedAt: new Date('2026-08-31T12:00:00.000Z'),
+    };
+    const prisma = {
+      cfFormTemplate: {
+        findFirst: jest.fn().mockImplementation(async () => persistedTemplate),
+        update: jest.fn().mockImplementation(async ({ data }) => {
+          persistedTemplate = { ...persistedTemplate, ...data };
+          return persistedTemplate;
+        }),
+        findMany: jest.fn().mockImplementation(async () => [persistedTemplate]),
+      },
+    };
+    const service = new ClientflowService(
+      request,
+      prisma as unknown as ClientflowPrismaService,
+      {} as PrismaService,
+      {} as NotificationsService,
+      {} as FilesService,
+    );
+
+    const updated = await service.updateFormTemplate(persistedTemplate.id, { fields: questions });
+    const [reloaded] = await service.listFormTemplates();
+
+    expect(updated.fields).toEqual(questions);
+    expect(updated.scope).toBe('program_section');
+    expect(reloaded.fields).toEqual(questions);
+    expect(reloaded.scope).toBe('program_section');
+    expect(prisma.cfFormTemplate.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ fields: questions }),
+    }));
+  });
+});
+
 describe('ClientflowService.removeDemo', () => {
   it('completes the live-mode transition when the partition has no AuditLog table', async () => {
     const request = {
@@ -271,6 +344,7 @@ describe('ClientflowService.removeDemo', () => {
       {} as ClientflowPrismaService,
       primaryPrisma as unknown as PrismaService,
       {} as NotificationsService,
+      {} as FilesService,
     );
     const deletePersistedDemoData = jest.fn().mockResolvedValue({ clients: 3 });
     Object.assign(service, { deletePersistedDemoData });
