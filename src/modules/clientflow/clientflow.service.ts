@@ -549,7 +549,7 @@ export class ClientflowService {
   async createFormTemplate(dto: CreateCfFormTemplateDto) {
     const orgId = await this.getOrgId();
     validateTemplateFields(dto.scope ?? 'legacy', dto.programId ?? null, dto.fields ?? []);
-    return this.prisma.cfFormTemplate.create({
+    const created = await this.prisma.cfFormTemplate.create({
       data: {
         ...(dto.id && { id: dto.id }),
         organizationId: orgId,
@@ -566,6 +566,16 @@ export class ClientflowService {
         isActive: dto.isActive ?? true,
       },
     });
+    // Normalize fields the same way listFormTemplates does for consistency
+    const scope = created.scope ?? 'legacy';
+    return {
+      ...created,
+      fields: scope === 'master_core'
+        ? ensureCoreIntakeFields(created.fields)
+        : scope === 'program_section' || created.programId !== null
+          ? normalizeProgramFormFields(created.fields, created.programId, created.id)
+          : normalizePublicFormFields(created.fields),
+    };
   }
 
   async updateFormTemplate(id: string, dto: UpdateCfFormTemplateDto) {
@@ -577,7 +587,7 @@ export class ClientflowService {
       dto.programId !== undefined ? dto.programId : existing.programId,
       dto.fields ?? (Array.isArray(existing.fields) ? existing.fields : []),
     );
-    return this.prisma.cfFormTemplate.update({
+    const updated = await this.prisma.cfFormTemplate.update({
       where: { id },
       data: {
         ...(dto.programId !== undefined && { programId: dto.programId }),
@@ -593,6 +603,15 @@ export class ClientflowService {
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       },
     });
+    // Normalize fields the same way listFormTemplates does for consistency
+    return {
+      ...updated,
+      fields: updated.scope === 'master_core'
+        ? ensureCoreIntakeFields(updated.fields)
+        : updated.scope === 'program_section' || updated.programId !== null
+          ? normalizeProgramFormFields(updated.fields, updated.programId, updated.id)
+          : normalizePublicFormFields(updated.fields),
+    };
   }
 
   // ─── Form Assignments ────────────────────────────────────────────────────────
