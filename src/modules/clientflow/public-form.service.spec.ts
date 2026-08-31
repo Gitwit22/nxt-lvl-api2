@@ -286,3 +286,104 @@ describe('PublicFormService.submitPublicForm', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
+
+describe('PublicFormService.getPublicForm', () => {
+  const assignment = {
+    id: 'assignment-1',
+    organizationId: 'org-1',
+    formId: 'core-template',
+    clientId: 'client-1',
+    recipientEmail: 'client@example.com',
+    status: 'pending',
+    dueDate: null,
+  };
+  const coreTemplate = {
+    id: 'core-template',
+    name: 'Client Intake',
+    description: '',
+    version: 1,
+    fields: [],
+  };
+  const program = { id: 'program-1', name: 'Inspired Detroit Initiative' };
+
+  function setup(sectionTemplates: Record<string, unknown>[]) {
+    const prisma = {
+      cfFormAssignment: { findUnique: jest.fn().mockResolvedValue(assignment) },
+      cfFormTemplate: {
+        findFirst: jest.fn().mockResolvedValue(coreTemplate),
+        findMany: jest.fn().mockResolvedValue(sectionTemplates),
+      },
+      cfClient: { findFirst: jest.fn().mockResolvedValue(null) },
+      cfProgram: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([program]),
+      },
+      cfIntakeRenderSession: { create: jest.fn().mockResolvedValue({}) },
+    };
+    return {
+      service: new PublicFormService(prisma as unknown as ClientflowPrismaService),
+      prisma,
+    };
+  }
+
+  it('renders questions from a legacy template assigned to an active program', async () => {
+    const { service, prisma } = setup([
+      {
+        id: 'legacy-template',
+        name: 'Inspired Detroit Initiative Member Profile Form',
+        description: '',
+        scope: 'legacy',
+        programId: program.id,
+        version: 2,
+        fields: [{ id: 'membership_goal', label: 'What is your primary goal?', type: 'text' }],
+      },
+    ]);
+
+    const result = await service.getPublicForm('secure-token');
+
+    expect(result.intakeConfiguration.sections[1]).toMatchObject({
+      templateId: 'legacy-template',
+      programId: program.id,
+      fields: [expect.objectContaining({ label: 'What is your primary goal?' })],
+    });
+    expect(prisma.cfFormTemplate.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        isActive: true,
+        OR: [
+          { scope: 'program_section' },
+          { scope: 'legacy', programId: { not: null } },
+        ],
+      }),
+    }));
+  });
+
+  it('prefers an explicit program section over a legacy template for the same program', async () => {
+    const { service } = setup([
+      {
+        id: 'legacy-template',
+        name: 'Legacy Profile',
+        description: '',
+        scope: 'legacy',
+        programId: program.id,
+        version: 1,
+        fields: [{ id: 'legacy_question', label: 'Legacy question', type: 'text' }],
+      },
+      {
+        id: 'program-template',
+        name: 'Current Profile',
+        description: '',
+        scope: 'program_section',
+        programId: program.id,
+        version: 3,
+        fields: [{ id: 'current_question', label: 'Current question', type: 'text' }],
+      },
+    ]);
+
+    const result = await service.getPublicForm('secure-token');
+
+    expect(result.intakeConfiguration.sections[1]).toMatchObject({
+      templateId: 'program-template',
+      fields: [expect.objectContaining({ label: 'Current question' })],
+    });
+  });
+});
