@@ -74,6 +74,17 @@ export class OrganizationsService {
     if (dto.defaultMonitoringFrequency !== undefined) {
       newSettings['defaultMonitoringFrequency'] = dto.defaultMonitoringFrequency;
     }
+    if (dto.notificationTemplateToggles !== undefined) {
+      const existingToggles =
+        existingSettings['notificationTemplateToggles'] &&
+        typeof existingSettings['notificationTemplateToggles'] === 'object'
+          ? existingSettings['notificationTemplateToggles'] as Record<string, unknown>
+          : {};
+      newSettings['notificationTemplateToggles'] = {
+        ...existingToggles,
+        ...dto.notificationTemplateToggles,
+      };
+    }
 
     const updated = await this.prisma.organization.update({
       where: { id: orgId },

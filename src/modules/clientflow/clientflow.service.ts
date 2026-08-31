@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundEx
 import { REQUEST } from '@nestjs/core';
 import { CfEnrollmentMonitoring, Prisma } from '../../generated/clientflow';
 import { compare } from 'bcrypt';
-import { randomBytes } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 import { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -12,7 +12,7 @@ import { CreateCfProgramDto, UpdateCfProgramDto } from './dto/cf-program.dto';
 import { CreateCfFormAssignmentDto, UpdateCfFormAssignmentDto } from './dto/cf-form-assignment.dto';
 import { CreateCfTermsDto, UpdateCfTermsDto } from './dto/cf-terms.dto';
 import { CreateCfContractDto, UpdateCfContractDto } from './dto/cf-contract.dto';
-import { CreateCfDocumentDto, CreateCfCommunicationDto, CreateCfFinalReportDto, CreateCfActivityDto } from './dto/cf-records.dto';
+import { CreateCfDocumentUploadDto, CreateCfCommunicationDto, CreateCfFinalReportDto, CreateCfActivityDto } from './dto/cf-records.dto';
 import { CreateCfFormTemplateDto, UpdateCfFormTemplateDto } from './dto/cf-form-template.dto';
 import { TransitionToLiveModeDto } from './dto/transition-to-live-mode.dto';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -28,6 +28,7 @@ import type {
   CfProgramDetailAnswerGroup,
   CfProgramDetailResponse,
 } from './dto/cf-program-detail.dto';
+import { FilesService } from '../files/files.service';
 
 type LiveOrganizationState = {
   liveMode: boolean;
@@ -161,6 +162,7 @@ export class ClientflowService {
     private readonly prisma: ClientflowPrismaService,
     private readonly primaryPrisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly files: FilesService,
   ) {}
 
   private async getOrgId(): Promise<string> {
@@ -784,7 +786,10 @@ export class ClientflowService {
 
   async listAllDocuments() {
     const orgId = await this.getOrgId();
-    return this.prisma.cfDocument.findMany({ where: { organizationId: orgId }, orderBy: { uploadedAt: 'desc' } });
+    return this.prisma.cfDocument.findMany({
+      where: { organizationId: orgId, uploadStatus: 'ready' },
+      orderBy: { uploadedAt: 'desc' },
+    });
   }
 
   async listAllCommunications() {
@@ -893,29 +898,101 @@ export class ClientflowService {
   async listDocuments(clientId: string, enrollmentId?: string) {
     const orgId = await this.getOrgId();
     return this.prisma.cfDocument.findMany({
-      where: { clientId, organizationId: orgId, ...(enrollmentId && { enrollmentId }) },
+      where: {
+        clientId,
+        organizationId: orgId,
+        uploadStatus: 'ready',
+        ...(enrollmentId && { enrollmentId }),
+      },
       orderBy: { uploadedAt: 'desc' },
     });
   }
 
-  async createDocument(clientId: string, dto: CreateCfDocumentDto) {
+  async createDocumentUpload(clientId: string, dto: CreateCfDocumentUploadDto) {
     const orgId = await this.getOrgId();
     await this.verifyClientBelongsToOrg(clientId, orgId);
     if (dto.enrollmentId) {
       await this.verifyEnrollmentBelongsToClient(dto.enrollmentId, clientId, orgId);
     }
-    return this.prisma.cfDocument.create({
+    const allowedTypes = new Set([
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ]);
+    if (!allowedTypes.has(dto.type)) {
+      throw new BadRequestException('This document type is not supported.');
+    }
+
+    const objectKey = this.files.getStorageKey(
+      'organizations', orgId, 'clients', clientId, 'documents', randomUUID(),
+    );
+    const document = await this.prisma.cfDocument.create({
       data: {
         organizationId: orgId,
         clientId,
         enrollmentId: dto.enrollmentId,
         name: dto.name,
         type: dto.type,
-        url: dto.url,
-        uploadedBy: dto.uploadedBy,
-        uploadedAt: dto.uploadedAt ? new Date(dto.uploadedAt) : new Date(),
+        url: '',
+        objectKey,
+        bucket: this.files.getBucketName(),
+        byteSize: dto.byteSize,
+        uploadStatus: 'pending',
+        uploadedBy: (this.request.headers['x-admin-email'] as string | undefined) ?? 'Admin',
       },
     });
+    try {
+      const upload = await this.files.createFileUrl({
+        fileName: dto.name,
+        contentType: dto.type,
+        action: 'upload',
+        objectKey,
+        expiresInSeconds: 900,
+      });
+      return { document, uploadUrl: upload.url, expiresInSeconds: upload.expiresInSeconds };
+    } catch (error) {
+      await this.prisma.cfDocument.delete({ where: { id: document.id } });
+      throw error;
+    }
+  }
+
+  async completeDocumentUpload(documentId: string) {
+    const orgId = await this.getOrgId();
+    const document = await this.prisma.cfDocument.findFirst({
+      where: { id: documentId, organizationId: orgId, uploadStatus: 'pending' },
+    });
+    if (!document?.objectKey) throw new NotFoundException('Pending document upload not found.');
+    const metadata = await this.files.getObjectMetadata(document.objectKey);
+    if (metadata.byteSize !== document.byteSize || metadata.contentType !== document.type) {
+      throw new BadRequestException('Uploaded document does not match the upload request.');
+    }
+    return this.prisma.cfDocument.update({
+      where: { id: document.id },
+      data: {
+        uploadStatus: 'ready',
+        byteSize: metadata.byteSize,
+        checksum: metadata.checksum,
+        uploadedAt: new Date(),
+      },
+    });
+  }
+
+  async getDocumentDownload(documentId: string) {
+    const orgId = await this.getOrgId();
+    const document = await this.prisma.cfDocument.findFirst({
+      where: { id: documentId, organizationId: orgId, uploadStatus: 'ready' },
+    });
+    if (!document?.objectKey) throw new NotFoundException('Stored document not found.');
+    const download = await this.files.createFileUrl({
+      fileName: document.name,
+      contentType: document.type,
+      action: 'download',
+      objectKey: document.objectKey,
+      expiresInSeconds: 300,
+    });
+    return { url: download.url, expiresInSeconds: download.expiresInSeconds };
   }
 
   // ─── Communications ─────────────────────────────────────────────────────────
@@ -1117,56 +1194,97 @@ export class ClientflowService {
     });
   }
 
-  async seedDemo(payload: {
-    programs?: unknown[];
-    formTemplates?: unknown[];
-  }) {
+  async seedDemo() {
     const orgId = await this.getOrgId();
+    const adminId = this.request.headers['x-admin-id'] as string | undefined;
+    if (!adminId) throw new UnauthorizedException('Admin context missing.');
     const organization = await this.primaryPrisma.organization.findUnique({
       where: { id: orgId },
     }) as unknown as LiveOrganizationState | null;
     if (!organization) throw new NotFoundException('Organization not found.');
 
     const removed = await this.deletePersistedDemoData(orgId);
-    const results: Record<string, number> = {};
-    const errors: Array<{ id: string; entity: string; error: string }> = [];
-    const logError = (entity: string, id: unknown) => (err: unknown): null => {
-      errors.push({ id: String(id), entity, error: err instanceof Error ? err.message : String(err) });
-      return null;
-    };
+    const program = await this.prisma.cfProgram.findFirst({
+      where: { organizationId: orgId, isActive: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const seeded = await this.prisma.$transaction(async (tx) => {
+      const client = await tx.cfClient.create({
+        data: {
+          organizationId: orgId,
+          businessName: 'Sample Business',
+          primaryContactName: 'Jordan Sample',
+          email: 'sample@example.com',
+          phone: '555-0100',
+          programId: program?.id,
+          status: 'New Intake',
+          relationshipType: 'prospect',
+          lifecycleStatus: 'intake',
+          assignedStaff: 'Demo Team',
+          intakeSource: 'demo_seed',
+          source: 'server_demo',
+          intake: {
+            businessDescription: 'A server-persisted sample record for exploring ClientFlow.',
+            assistanceRequested: 'Review the intake and assign next steps.',
+          },
+          isDemo: true,
+        },
+      });
+      let enrollmentId: string | null = null;
+      if (program) {
+        const enrollment = await tx.cfProgramEnrollment.create({
+          data: {
+            organizationId: orgId,
+            clientId: client.id,
+            programId: program.id,
+            status: 'interested',
+            assignedStaff: 'Demo Team',
+            isDemo: true,
+          },
+        });
+        enrollmentId = enrollment.id;
+        await tx.cfEnrollmentStatusHistory.create({
+          data: {
+            organizationId: orgId,
+            enrollmentId: enrollment.id,
+            newStatus: 'interested',
+            changedByUserId: adminId,
+            reason: 'Created by the server demo seed.',
+          },
+        });
+      }
+      await tx.cfActivityLog.create({
+        data: {
+          organizationId: orgId,
+          clientId: client.id,
+          enrollmentId,
+          action: 'demo_seeded',
+          description: 'Server-persisted demo workflow created.',
+          user: this.request.headers['x-admin-email'] as string ?? 'Admin',
+          isDemo: true,
+        },
+      });
+      return { clients: 1, enrollments: enrollmentId ? 1 : 0, activity: 1 };
+    });
 
-    if (payload.programs?.length) {
-      await Promise.all(
-        (payload.programs as Record<string, unknown>[]).map((p) =>
-          this.prisma.cfProgram.upsert({
-            where: { id: p['id'] as string },
-            create: { ...(p as any), organizationId: orgId } as any,
-            update: {},
-          }).catch(logError('program', p['id'])),
-        ),
-      );
-      results.programs = payload.programs.length;
-    }
+    await this.primaryPrisma.organization.update({
+      where: { id: orgId },
+      data: { liveMode: false, demoRemovedAt: null },
+    });
+    await this.primaryPrisma.auditLog.create({
+      data: {
+        organizationId: orgId,
+        actorAdminId: adminId,
+        action: 'created',
+        targetType: 'Organization',
+        targetId: orgId,
+        metadata: { event: 'CLIENTFLOW_DEMO_SEEDED', seeded },
+      },
+    }).catch((error: unknown) => {
+      if (!isMissingTableError(error)) throw error;
+    });
 
-    if (payload.formTemplates?.length) {
-      await Promise.all(
-        (payload.formTemplates as Record<string, unknown>[]).map((t) =>
-          this.prisma.cfFormTemplate.upsert({
-            where: { id: t['id'] as string },
-            create: { ...(t as any), organizationId: orgId, fields: (t['fields'] ?? []) as Prisma.InputJsonValue, emailTemplate: (t['emailTemplate'] as string) ?? '' } as any,
-            update: {
-              programId: (t['programId'] as string | null | undefined) ?? null,
-              scope: (t['scope'] as string | undefined) ?? 'legacy',
-              version: (t['version'] as number | undefined) ?? 1,
-              sortOrder: (t['sortOrder'] as number | undefined) ?? 0,
-            },
-          }).catch(logError('formTemplate', t['id'])),
-        ),
-      );
-      results.formTemplates = payload.formTemplates.length;
-    }
-
-    return { seeded: results, removed, errors, liveMode: organization.liveMode };
+    return { seeded, removed, liveMode: false };
   }
 
   // ─── Demo Remove ────────────────────────────────────────────────────────────

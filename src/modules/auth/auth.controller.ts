@@ -1,7 +1,12 @@
-import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
-import type { Request } from 'express';
+import { Body, Controller, Get, Post, Query, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
 import { AuthService } from './auth.service';
+import {
+  clearAuthCookies,
+  REFRESH_COOKIE_NAME,
+  setAuthCookies,
+} from './auth-cookies';
 import { LoginDto } from './dto/login.dto';
 
 @Controller('auth')
@@ -9,15 +14,26 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('login')
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) response: Response) {
+    const result = await this.authService.login(dto);
+    setAuthCookies(response, result.accessToken, result.refreshToken);
+    return { admin: result.admin };
+  }
+
+  @Post('refresh')
+  async refresh(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    const refreshToken = request.cookies?.[REFRESH_COOKIE_NAME] as string | undefined;
+    if (!refreshToken) throw new UnauthorizedException('Missing refresh session.');
+    const result = await this.authService.refresh(refreshToken);
+    setAuthCookies(response, result.accessToken, result.refreshToken);
+    return { valid: true };
   }
 
   @Post('logout')
-  @UseGuards(AdminJwtGuard)
-  logout(@Req() req: Request) {
-    const sessionId = req.headers['x-session-id'] as string;
-    return this.authService.logout(sessionId);
+  async logout(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    const refreshToken = request.cookies?.[REFRESH_COOKIE_NAME] as string | undefined;
+    clearAuthCookies(response);
+    return this.authService.logout(refreshToken);
   }
 
   @Get('me')
@@ -39,7 +55,12 @@ export class AuthController {
   }
 
   @Post('accept-invite')
-  acceptInvite(@Body() body: { token: string; newPassword: string }) {
-    return this.authService.acceptInvite(body.token, body.newPassword);
+  async acceptInvite(
+    @Body() body: { token: string; newPassword: string },
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.authService.acceptInvite(body.token, body.newPassword);
+    setAuthCookies(response, result.accessToken, result.refreshToken);
+    return { admin: result.admin };
   }
 }

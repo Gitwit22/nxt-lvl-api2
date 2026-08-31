@@ -1,6 +1,8 @@
 ﻿import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
+import type { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
@@ -43,6 +45,7 @@ async function bootstrap() {
       crossOriginResourcePolicy: { policy: 'cross-origin' },
     }),
   );
+  app.use(cookieParser());
 
   const corsOrigins = [
     ...(process.env.CORS_ORIGIN ?? '').split(','),
@@ -66,6 +69,27 @@ async function bootstrap() {
     credentials: true,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-App-Partition'],
+  });
+
+  const exactCookieOrigins = corsOrigins
+    .filter((origin) => origin !== '*' && !origin.includes('*'))
+    .map(normalizeOrigin);
+  const stateChangingMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+  app.use((request: Request, response: Response, next: NextFunction) => {
+    const hasAuthCookie = Object.keys(request.cookies ?? {}).some((name) =>
+      name.includes('clientflow_session') || name.includes('clientflow_refresh'),
+    );
+    if (!hasAuthCookie || !stateChangingMethods.has(request.method)) {
+      next();
+      return;
+    }
+
+    const origin = request.headers.origin;
+    if (!origin || !exactCookieOrigins.includes(normalizeOrigin(origin))) {
+      response.status(403).json({ message: 'Origin is not allowed for this request.' });
+      return;
+    }
+    next();
   });
 
   app.setGlobalPrefix('api/v1');

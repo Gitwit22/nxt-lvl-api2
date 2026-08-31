@@ -1,4 +1,23 @@
-import { IsEmail, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsBoolean, IsEmail, IsOptional, IsString, ValidateNested } from 'class-validator';
+
+export class NotificationTemplateTogglesDto {
+  @IsBoolean()
+  @IsOptional()
+  programInvite?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  monitoringReminder?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  contractDraft?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  finalReport?: boolean;
+}
 
 export class UpdateOrgSettingsDto {
   @IsString()
@@ -12,4 +31,9 @@ export class UpdateOrgSettingsDto {
   @IsString()
   @IsOptional()
   defaultMonitoringFrequency?: string;
+
+  @ValidateNested()
+  @Type(() => NotificationTemplateTogglesDto)
+  @IsOptional()
+  notificationTemplateToggles?: NotificationTemplateTogglesDto;
 }

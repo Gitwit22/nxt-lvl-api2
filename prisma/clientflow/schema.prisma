@@ -65,17 +65,21 @@ model AdminInvitation {
 }
 
 model AuthSession {
-  id          String    @id
-  adminUserId String
-  jti         String    @unique
-  expiresAt   DateTime
-  revokedAt   DateTime?
-  createdAt   DateTime  @default(now())
+  id                 String    @id
+  adminUserId        String
+  jti                String    @unique
+  expiresAt          DateTime
+  refreshTokenHash   String?   @unique
+  refreshExpiresAt   DateTime?
+  refreshRotatedAt   DateTime?
+  revokedAt          DateTime?
+  createdAt          DateTime  @default(now())
 
   adminUser AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
 
   @@index([adminUserId, revokedAt])
   @@index([expiresAt])
+  @@index([refreshExpiresAt])
 }
 
 enum CfEnrollmentStatus {
@@ -340,6 +344,11 @@ model CfDocument {
   name           String
   type           String
   url            String
+  objectKey      String?  @unique
+  bucket         String?
+  byteSize       Int?
+  checksum       String?
+  uploadStatus   String   @default("ready")
   uploadedAt     DateTime @default(now())
   uploadedBy     String
   isDemo         Boolean  @default(false)
@@ -349,6 +358,7 @@ model CfDocument {
   @@index([organizationId, isDemo])
   @@index([organizationId, clientId])
   @@index([enrollmentId])
+  @@index([organizationId, uploadStatus])
 }
 
 model CfCommunication {

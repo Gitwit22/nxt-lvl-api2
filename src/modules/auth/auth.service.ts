@@ -2,7 +2,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException, Scope, Unau
 import { REQUEST } from '@nestjs/core';
 import { LoginUseCase, defaultAuthConfig } from '@nxtlvl/auth-core';
 import type { LoginCredentials } from '@nxtlvl/auth-core';
-import { createHash, randomUUID } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import { decode, sign } from 'jsonwebtoken';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -11,6 +11,13 @@ import { BcryptPasswordHasher } from './infrastructure/bcrypt-password-hasher';
 import { JwtTokenService } from './infrastructure/jwt-token-service';
 import { ConsoleAuditLogger } from './infrastructure/console-audit-logger';
 import { LoginDto } from './dto/login.dto';
+
+const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+type IssuedSession = {
+  accessToken: string;
+  refreshToken: string;
+};
 
 @Injectable({ scope: Scope.REQUEST })
 export class AuthService {
@@ -49,7 +56,7 @@ export class AuthService {
       where: { id: result.user.id },
     });
 
-    const accessToken = await this.issueSessionToken(
+    const session = await this.issueSessionToken(
       result.user.id,
       result.user.email,
       result.user.roles as string[],
@@ -57,7 +64,7 @@ export class AuthService {
     );
 
     return {
-      accessToken,
+      ...session,
       admin: {
         id: result.user.id,
         email: result.user.email,
@@ -118,7 +125,7 @@ export class AuthService {
 
     const { adminUser } = invitation;
     const tokenService = new JwtTokenService(this.request.partition.authIssuer);
-    const accessToken = await this.issueSessionToken(
+    const session = await this.issueSessionToken(
       adminUser.id,
       adminUser.email,
       [adminUser.role],
@@ -126,7 +133,7 @@ export class AuthService {
     );
 
     return {
-      accessToken,
+      ...session,
       admin: {
         id: adminUser.id,
         email: adminUser.email,
@@ -145,12 +152,62 @@ export class AuthService {
     return admin;
   }
 
-  async logout(sessionId: string) {
+  async logout(refreshToken?: string) {
+    if (!refreshToken) return { message: 'Logged out.' };
+    const [sessionId, secret] = refreshToken.split('.', 2);
+    if (!sessionId || !secret) return { message: 'Logged out.' };
     await this.prisma.authSession.updateMany({
-      where: { id: sessionId, revokedAt: null },
+      where: {
+        id: sessionId,
+        refreshTokenHash: this.hashRefreshToken(refreshToken),
+        revokedAt: null,
+      },
       data: { revokedAt: new Date() },
     });
     return { message: 'Logged out.' };
+  }
+
+  async refresh(refreshToken: string): Promise<IssuedSession> {
+    const [sessionId, secret] = refreshToken.split('.', 2);
+    if (!sessionId || !secret) throw new UnauthorizedException('Invalid refresh session.');
+
+    const refreshTokenHash = this.hashRefreshToken(refreshToken);
+    const session = await this.prisma.authSession.findFirst({
+      where: {
+        id: sessionId,
+        refreshTokenHash,
+        refreshExpiresAt: { gt: new Date() },
+        revokedAt: null,
+        adminUser: { isActive: true },
+      },
+      include: { adminUser: true },
+    });
+    if (!session) throw new UnauthorizedException('Refresh session is expired or revoked.');
+
+    const nextJti = randomUUID();
+    const nextRefreshToken = this.createRefreshToken(session.id);
+    const nextRefreshTokenHash = this.hashRefreshToken(nextRefreshToken);
+    const rotated = await this.prisma.authSession.updateMany({
+      where: { id: session.id, refreshTokenHash, revokedAt: null },
+      data: {
+        jti: nextJti,
+        refreshTokenHash: nextRefreshTokenHash,
+        refreshRotatedAt: new Date(),
+      },
+    });
+    if (rotated.count !== 1) throw new UnauthorizedException('Refresh session was already used.');
+
+    return {
+      accessToken: this.signWithOrgId(
+        session.adminUser.id,
+        session.adminUser.email,
+        [session.adminUser.role],
+        session.adminUser.organizationId,
+        session.id,
+        nextJti,
+      ),
+      refreshToken: nextRefreshToken,
+    };
   }
 
   private async issueSessionToken(
@@ -158,21 +215,33 @@ export class AuthService {
     email: string,
     roles: string[],
     organizationId?: string,
-  ): Promise<string> {
+  ): Promise<IssuedSession> {
     const sessionId = randomUUID();
     const jti = randomUUID();
     const token = this.signWithOrgId(sub, email, roles, organizationId, sessionId, jti);
     const payload = decode(token) as { exp?: number } | null;
     if (!payload?.exp) throw new UnauthorizedException('Could not create an authenticated session.');
+    const refreshToken = this.createRefreshToken(sessionId);
+    const refreshExpiresAt = new Date(Date.now() + REFRESH_TTL_MS);
     await this.prisma.authSession.create({
       data: {
         id: sessionId,
         adminUserId: sub,
         jti,
-        expiresAt: new Date(payload.exp * 1000),
+        expiresAt: refreshExpiresAt,
+        refreshTokenHash: this.hashRefreshToken(refreshToken),
+        refreshExpiresAt,
       },
     });
-    return token;
+    return { accessToken: token, refreshToken };
+  }
+
+  private createRefreshToken(sessionId: string): string {
+    return `${sessionId}.${randomBytes(32).toString('base64url')}`;
+  }
+
+  private hashRefreshToken(refreshToken: string): string {
+    return createHash('sha256').update(refreshToken).digest('hex');
   }
 
   private signWithOrgId(
@@ -180,11 +249,11 @@ export class AuthService {
     email: string,
     roles: string[],
     organizationId?: string,
-    sessionId = randomUUID(),
-    jti = randomUUID(),
+    sessionId: string = randomUUID(),
+    jti: string = randomUUID(),
   ): string {
     const secret = process.env['JWT_SECRET'] ?? '';
-    const expiresIn = (process.env['JWT_EXPIRES_IN'] ?? '1d') as unknown as number;
+    const expiresIn = (process.env['JWT_ACCESS_EXPIRES_IN'] ?? '15m') as unknown as number;
     return sign(
       { email, roles, sessionId, jti, organizationId },
       secret,

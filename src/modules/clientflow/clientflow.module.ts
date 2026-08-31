@@ -6,9 +6,10 @@ import { PublicFormService } from './public-form.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { EnrollmentService } from './enrollment.service';
 import { MonitoringService } from './monitoring.service';
+import { FilesModule } from '../files/files.module';
 
 @Module({
-  imports: [NotificationsModule],
+  imports: [NotificationsModule, FilesModule],
   controllers: [ClientflowController, PublicFormController],
   providers: [ClientflowService, EnrollmentService, MonitoringService, PublicFormService],
 })

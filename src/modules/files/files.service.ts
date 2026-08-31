@@ -6,7 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { REQUEST } from '@nestjs/core';
-import { S3Client, DeleteObjectCommand, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, DeleteObjectCommand, PutObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 
@@ -27,6 +27,12 @@ export interface CreateFileUrlResult {
   url: string;
   publicUrl?: string;
   expiresInSeconds: number;
+}
+
+export interface StoredObjectMetadata {
+  byteSize: number;
+  checksum?: string;
+  contentType?: string;
 }
 
 @Injectable({ scope: Scope.REQUEST })
@@ -124,6 +130,21 @@ export class FilesService {
       url,
       publicUrl: this.getPublicUrl(objectKey),
       expiresInSeconds,
+    };
+  }
+
+  async getObjectMetadata(objectKey: string): Promise<StoredObjectMetadata> {
+    if (!this.s3Client) {
+      throw new ServiceUnavailableException('R2 is not configured.');
+    }
+    const result = await this.s3Client.send(new HeadObjectCommand({
+      Bucket: this.getBucketName(),
+      Key: objectKey,
+    }));
+    return {
+      byteSize: result.ContentLength ?? 0,
+      checksum: result.ChecksumSHA256 ?? result.ETag?.replaceAll('"', ''),
+      contentType: result.ContentType,
     };
   }
 

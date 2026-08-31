@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import type { PartitionRequest } from '../interfaces/partition-request.interface';
 import { JwtTokenService } from '../../modules/auth/infrastructure/jwt-token-service';
+import { ACCESS_COOKIE_NAME } from '../../modules/auth/auth-cookies';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -10,12 +11,11 @@ export class AdminJwtGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<PartitionRequest>();
     const authHeader = request.headers.authorization;
+    const cookieToken = request.cookies?.[ACCESS_COOKIE_NAME] as string | undefined;
+    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : undefined;
+    const token = cookieToken ?? bearerToken;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Missing bearer token.');
-    }
-
-    const token = authHeader.substring(7);
+    if (!token) throw new UnauthorizedException('Missing authenticated session.');
 
     try {
       const tokenService = new JwtTokenService(request.partition.authIssuer);

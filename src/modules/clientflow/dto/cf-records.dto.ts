@@ -1,12 +1,10 @@
-import { IsString, IsOptional } from 'class-validator';
+import { IsInt, IsString, IsOptional, Max, Min } from 'class-validator';
 
-export class CreateCfDocumentDto {
+export class CreateCfDocumentUploadDto {
   @IsOptional() @IsString() enrollmentId?: string;
   @IsString() name!: string;
   @IsString() type!: string;
-  @IsString() url!: string;
-  @IsString() uploadedBy!: string;
-  @IsOptional() @IsString() uploadedAt?: string;
+  @IsInt() @Min(1) @Max(25 * 1024 * 1024) byteSize!: number;
 }
 
 export class CreateCfCommunicationDto {

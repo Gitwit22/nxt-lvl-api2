@@ -21,7 +21,7 @@ import {
 } from './dto/cf-enrollment-monitoring.dto';
 import { CreateCfContractDto, UpdateCfContractDto } from './dto/cf-contract.dto';
 import {
-  CreateCfDocumentDto,
+  CreateCfDocumentUploadDto,
   CreateCfCommunicationDto,
   CreateCfFinalReportDto,
   CreateCfActivityDto,
@@ -209,8 +209,17 @@ export class ClientflowController {
     @Query('enrollmentId') enrollmentId?: string,
   ) { return this.svc.listDocuments(clientId, enrollmentId); }
 
-  @Post('clients/:clientId/documents')
-  createDocument(@Param('clientId') clientId: string, @Body() dto: CreateCfDocumentDto) { return this.svc.createDocument(clientId, dto); }
+  @Post('clients/:clientId/documents/upload-intent')
+  createDocumentUpload(
+    @Param('clientId') clientId: string,
+    @Body() dto: CreateCfDocumentUploadDto,
+  ) { return this.svc.createDocumentUpload(clientId, dto); }
+
+  @Post('documents/:id/complete-upload')
+  completeDocumentUpload(@Param('id') id: string) { return this.svc.completeDocumentUpload(id); }
+
+  @Get('documents/:id/download')
+  getDocumentDownload(@Param('id') id: string) { return this.svc.getDocumentDownload(id); }
 
   // ─── Communications ─────────────────────────────────────────────────────────
 
@@ -257,7 +266,8 @@ export class ClientflowController {
   getDemoStatus() { return this.svc.getDemoStatus(); }
 
   @Post('seed-demo')
-  seedDemo(@Body() payload: Record<string, unknown[]>) { return this.svc.seedDemo(payload); }
+  @UseGuards(OrgAdminGuard)
+  seedDemo() { return this.svc.seedDemo(); }
 
   @Post('remove-demo')
   @UseGuards(OrgAdminGuard)
