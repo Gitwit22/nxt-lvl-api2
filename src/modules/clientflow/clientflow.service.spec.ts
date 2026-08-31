@@ -1,10 +1,13 @@
 import { NotFoundException } from '@nestjs/common';
+import { compare } from 'bcrypt';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 import { Prisma } from '../../generated/clientflow';
 import type { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { NotificationsService } from '../notifications/notifications.service';
 import { ClientflowService } from './clientflow.service';
+
+jest.mock('bcrypt', () => ({ compare: jest.fn() }));
 
 describe('ClientflowService.getProgramDetail', () => {
   const prisma = {
@@ -223,5 +226,67 @@ describe('ClientflowService.getProgramDetail', () => {
     await expect(createService().getProgramDetail('program-other'))
       .rejects.toBeInstanceOf(NotFoundException);
     expect(prisma.cfProgramEnrollment.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('ClientflowService.removeDemo', () => {
+  it('completes the live-mode transition when the partition has no AuditLog table', async () => {
+    const request = {
+      headers: { 'x-org-id': 'org-1', 'x-admin-id': 'admin-1' },
+      partition: { appUrl: 'https://clientflow.test' },
+    } as unknown as PartitionRequest;
+    const primaryPrisma = {
+      adminUser: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'admin-1',
+          organizationId: 'org-1',
+          role: 'org_admin',
+          isActive: true,
+          passwordHash: 'hash',
+        }),
+      },
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({
+          liveMode: false,
+          demoRemovedAt: null,
+          principalAdminId: null,
+        }),
+      },
+      auditLog: {
+        create: jest.fn().mockRejectedValue({ code: 'P2021' }),
+      },
+      $transaction: jest.fn(async (callback) => callback({
+        organization: {
+          findUnique: jest.fn().mockResolvedValue({ liveMode: false }),
+          update: jest.fn().mockResolvedValue({
+            liveMode: true,
+            demoRemovedAt: new Date('2026-08-30T12:00:00.000Z'),
+            principalAdminId: 'admin-1',
+          }),
+        },
+      })),
+    };
+    const service = new ClientflowService(
+      request,
+      {} as ClientflowPrismaService,
+      primaryPrisma as unknown as PrismaService,
+      {} as NotificationsService,
+    );
+    const deletePersistedDemoData = jest.fn().mockResolvedValue({ clients: 3 });
+    Object.assign(service, { deletePersistedDemoData });
+    jest.mocked(compare).mockResolvedValue(true as never);
+
+    const result = await service.removeDemo({
+      currentPassword: 'correct-password',
+      confirmation: 'REMOVE DEMO DATA',
+    });
+
+    expect(result).toMatchObject({
+      liveMode: true,
+      principalAdminId: 'admin-1',
+      removed: { clients: 3 },
+    });
+    expect(deletePersistedDemoData).toHaveBeenCalledWith('org-1');
+    expect(primaryPrisma.auditLog.create).toHaveBeenCalledTimes(1);
   });
 });

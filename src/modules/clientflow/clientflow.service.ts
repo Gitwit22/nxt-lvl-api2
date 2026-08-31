@@ -35,6 +35,13 @@ type LiveOrganizationState = {
   principalAdminId: string | null;
 };
 
+function isMissingTableError(error: unknown): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && error.code === 'P2021';
+}
+
 function validateTemplateFields(
   scope: string,
   programId: string | null,
@@ -98,7 +105,7 @@ function jsonRecord(value: unknown): Record<string, unknown> {
 }
 
 function ignoreMissingMonitoringTable(error: unknown): CfEnrollmentMonitoring[] {
-  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2021') {
+  if (isMissingTableError(error)) {
     return [];
   }
   throw error;
@@ -1191,16 +1198,20 @@ export class ClientflowService {
     const removed = await this.deletePersistedDemoData(orgId);
 
     const revokedAt = organization.demoRemovedAt ?? new Date();
-    const updatedOrganization = await this.primaryPrisma.$transaction(async (tx) => {
+    const { updatedOrganization, transitioned } = await this.primaryPrisma.$transaction(async (tx) => {
       const current = await tx.organization.findUnique({ where: { id: orgId } });
       if (!current) throw new NotFoundException('Organization not found.');
-      if (current.liveMode) return current;
+      if (current.liveMode) return { updatedOrganization: current, transitioned: false };
 
       const updated = await tx.organization.update({
         where: { id: orgId },
         data: { liveMode: true, demoRemovedAt: revokedAt, principalAdminId: adminId },
       });
-      await tx.auditLog.create({
+      return { updatedOrganization: updated, transitioned: true };
+    });
+
+    if (transitioned) {
+      await this.primaryPrisma.auditLog.create({
         data: {
           organizationId: orgId,
           actorAdminId: adminId,
@@ -1213,9 +1224,10 @@ export class ClientflowService {
             removedDemoData: true,
           },
         },
+      }).catch((error: unknown) => {
+        if (!isMissingTableError(error)) throw error;
       });
-      return updated;
-    });
+    }
 
     return {
       liveMode: true,
