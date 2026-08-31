@@ -454,6 +454,9 @@ export class PublicFormService {
     }
 
     const coreFieldIds = new Set(coreSection.fields.map((field) => field.id));
+    // Validate that all submitted responses are for fields in the current rendered template.
+    // The rendered template always includes the latest template version, so new fields
+    // added after form assignment will be available for the client to answer.
     if (Object.keys(dto.coreResponses).some((fieldId) => !coreFieldIds.has(fieldId))) {
       throw new BadRequestException('One or more core answers do not belong to this form.');
     }
@@ -468,6 +471,9 @@ export class PublicFormService {
       const section = selectedSections.find((candidate) => candidate.programId === programId);
       const responses = dto.programResponses[programId] ?? {};
       const fieldIds = new Set(section?.fields.map((field) => field.id) ?? []);
+      // Validate that all submitted program responses are for fields in the current rendered template.
+      // The rendered template always includes the latest template version with any new program
+      // questions added after the form was originally assigned to the client.
       if (Object.keys(responses).some((fieldId) => !fieldIds.has(fieldId))) {
         throw new BadRequestException('One or more program answers do not belong to the selected program.');
       }
