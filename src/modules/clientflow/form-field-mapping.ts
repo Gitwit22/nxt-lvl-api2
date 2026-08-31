@@ -238,8 +238,14 @@ export function ensureCoreIntakeFields(rawFields: unknown): PublicFormFieldShape
     byCanonicalKey.set(key, field);
   }
 
-  return CORE_INTAKE_FIELDS.map((baseline) => {
+  // Build core fields first, ensuring all required core fields are present
+  const coreFields = CORE_INTAKE_FIELDS.map((baseline) => {
     const key = canonicalFieldKey(baseline) ?? `id:${baseline.id}`;
     return byCanonicalKey.get(key) ?? { ...baseline };
   });
+
+  // Append any custom fields that aren't part of the core intake fields
+  const customFields = normalized.filter((field) => canonicalFieldKey(field) === null);
+  
+  return [...coreFields, ...customFields];
 }

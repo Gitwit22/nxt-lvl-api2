@@ -18,7 +18,10 @@ import { TransitionToLiveModeDto } from './dto/transition-to-live-mode.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
   canonicalFieldKey,
+  ensureCoreIntakeFields,
   MappableFormField,
+  normalizeProgramFormFields,
+  normalizePublicFormFields,
 } from './form-field-mapping';
 import type {
   CfProgramDetailAnswer,
@@ -533,9 +536,14 @@ export class ClientflowService {
       where: { organizationId: orgId },
       orderBy: { createdAt: 'asc' },
     });
-    // Return raw fields without normalization so admin can see and edit all saved questions.
-    // Normalization is applied by public-form.service when rendering forms to clients.
-    return templates;
+    return templates.map((template) => ({
+      ...template,
+      fields: template.scope === 'master_core'
+        ? ensureCoreIntakeFields(template.fields)
+        : template.scope === 'program_section' || template.programId !== null
+          ? normalizeProgramFormFields(template.fields, template.programId, template.id)
+          : normalizePublicFormFields(template.fields),
+    }));
   }
 
   async createFormTemplate(dto: CreateCfFormTemplateDto) {
