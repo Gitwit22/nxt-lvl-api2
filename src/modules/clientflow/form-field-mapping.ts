@@ -151,20 +151,22 @@ export function isPublicFieldRequired(field: Pick<PublicFormFieldShape, 'type' |
 export function normalizePublicFormFields(rawFields: unknown): PublicFormFieldShape[] {
   if (!Array.isArray(rawFields)) return [];
   const normalized: PublicFormFieldShape[] = [];
-  const byId = new Map<string, number>();
+  const seenIds = new Set<string>();
 
   for (const rawField of rawFields) {
     if (!rawField || typeof rawField !== 'object') continue;
     const value = rawField as Record<string, unknown>;
     const id = typeof value.id === 'string' ? value.id.trim() : '';
-    if (!id) continue;
+    if (!id || seenIds.has(id)) continue; // Skip if no id or duplicate id
+    seenIds.add(id);
+    
     const label = typeof value.label === 'string' ? value.label.trim() : '';
     const type = typeof value.type === 'string' && FIELD_TYPES.has(value.type) ? value.type : 'text';
     const field: PublicFormFieldShape = {
       id,
-      label: displayLabelForField({
+      label: label || displayLabelForField({
         id,
-        label,
+        label: '',
         ...(typeof value.prefillKey === 'string' ? { prefillKey: value.prefillKey } : {}),
       }),
       type,
@@ -177,13 +179,7 @@ export function normalizePublicFormFields(rawFields: unknown): PublicFormFieldSh
         ? { helpText: value.helpText.trim() }
         : {}),
     };
-    const existingIndex = byId.get(id);
-    if (existingIndex === undefined) {
-      byId.set(id, normalized.length);
-      normalized.push(field);
-    } else if (!label && normalized[existingIndex].label === id) {
-      normalized[existingIndex] = field;
-    }
+    normalized.push(field);
   }
   return normalized;
 }

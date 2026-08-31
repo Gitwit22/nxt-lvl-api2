@@ -137,7 +137,12 @@ export class ClientflowController {
   // ─── Global lists (all records for org) ────────────────────────────────────
 
   @Get('terms')
-  listAllTerms() { return this.svc.listAllTerms(); }
+  listAllTerms(@Query('limit') limit?: string, @Query('offset') offset?: string) {
+    return this.svc.listAllTerms(
+      limit ? Math.min(parseInt(limit), 500) : 200,
+      offset ? parseInt(offset) : 0
+    );
+  }
 
   @Get('monitoring')
   listAllMonitoring(@Query('enrollmentId') enrollmentId?: string) {
@@ -145,16 +150,36 @@ export class ClientflowController {
   }
 
   @Get('contracts')
-  listAllContracts() { return this.svc.listAllContracts(); }
+  listAllContracts(@Query('limit') limit?: string, @Query('offset') offset?: string) {
+    return this.svc.listAllContracts(
+      limit ? Math.min(parseInt(limit), 500) : 200,
+      offset ? parseInt(offset) : 0
+    );
+  }
 
   @Get('documents')
-  listAllDocuments() { return this.svc.listAllDocuments(); }
+  listAllDocuments(@Query('limit') limit?: string, @Query('offset') offset?: string) {
+    return this.svc.listAllDocuments(
+      limit ? Math.min(parseInt(limit), 500) : 200,
+      offset ? parseInt(offset) : 0
+    );
+  }
 
   @Get('communications')
-  listAllCommunications() { return this.svc.listAllCommunications(); }
+  listAllCommunications(@Query('limit') limit?: string, @Query('offset') offset?: string) {
+    return this.svc.listAllCommunications(
+      limit ? Math.min(parseInt(limit), 500) : 200,
+      offset ? parseInt(offset) : 0
+    );
+  }
 
   @Get('final-reports')
-  listAllFinalReports() { return this.svc.listAllFinalReports(); }
+  listAllFinalReports(@Query('limit') limit?: string, @Query('offset') offset?: string) {
+    return this.svc.listAllFinalReports(
+      limit ? Math.min(parseInt(limit), 500) : 200,
+      offset ? parseInt(offset) : 0
+    );
+  }
 
   // ─── Terms ──────────────────────────────────────────────────────────────────
 

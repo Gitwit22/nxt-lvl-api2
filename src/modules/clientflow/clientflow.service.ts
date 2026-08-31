@@ -774,32 +774,54 @@ export class ClientflowService {
 
   // ─── Global org-wide lists ─────────────────────────────────────────────────
 
-  async listAllTerms() {
+  async listAllTerms(limit: number = 200, offset: number = 0) {
     const orgId = await this.getOrgId();
-    return this.prisma.cfTerms.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'desc' } });
+    return this.prisma.cfTerms.findMany({
+      where: { organizationId: orgId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      skip: offset,
+    });
   }
 
-  async listAllContracts() {
+  async listAllContracts(limit: number = 200, offset: number = 0) {
     const orgId = await this.getOrgId();
-    return this.prisma.cfContract.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'desc' } });
+    return this.prisma.cfContract.findMany({
+      where: { organizationId: orgId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      skip: offset,
+    });
   }
 
-  async listAllDocuments() {
+  async listAllDocuments(limit: number = 200, offset: number = 0) {
     const orgId = await this.getOrgId();
     return this.prisma.cfDocument.findMany({
       where: { organizationId: orgId, uploadStatus: 'ready' },
       orderBy: { uploadedAt: 'desc' },
+      take: limit,
+      skip: offset,
     });
   }
 
-  async listAllCommunications() {
+  async listAllCommunications(limit: number = 200, offset: number = 0) {
     const orgId = await this.getOrgId();
-    return this.prisma.cfCommunication.findMany({ where: { organizationId: orgId }, orderBy: { date: 'desc' } });
+    return this.prisma.cfCommunication.findMany({
+      where: { organizationId: orgId },
+      orderBy: { date: 'desc' },
+      take: limit,
+      skip: offset,
+    });
   }
 
-  async listAllFinalReports() {
+  async listAllFinalReports(limit: number = 200, offset: number = 0) {
     const orgId = await this.getOrgId();
-    return this.prisma.cfFinalReport.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'desc' } });
+    return this.prisma.cfFinalReport.findMany({
+      where: { organizationId: orgId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      skip: offset,
+    });
   }
 
   // ─── Terms ──────────────────────────────────────────────────────────────────
