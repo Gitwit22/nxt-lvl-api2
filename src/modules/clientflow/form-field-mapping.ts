@@ -189,8 +189,7 @@ export function normalizeProgramFormFields(
   programId: string | null,
   templateId?: string,
 ): PublicFormFieldShape[] {
-  const fields = normalizePublicFormFields(rawFields)
-    .filter((field) => canonicalFieldKey(field) === null);
+  const fields = normalizePublicFormFields(rawFields);
   if (programId !== 'prog-grant' && templateId !== 'form-grant') return fields;
 
   const grantOverrides: Record<string, Partial<PublicFormFieldShape>> = {
