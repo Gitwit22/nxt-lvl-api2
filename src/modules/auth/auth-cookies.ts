@@ -15,6 +15,7 @@ const baseCookieOptions: CookieOptions = {
   httpOnly: true,
   secure: production,
   sameSite: production ? 'none' : 'lax',
+  partitioned: production,
   path: '/',
 };
 
