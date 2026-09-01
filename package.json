@@ -26,6 +26,8 @@
     "clientflow:forms:audit": "ts-node scripts/normalize-clientflow-forms.ts",
     "clientflow:forms:normalize": "ts-node scripts/normalize-clientflow-forms.ts --apply",
     "clientflow:forms:deploy": "powershell -ExecutionPolicy Bypass -File scripts/run-clientflow-form-normalization.ps1",
+    "clientflow:forms:cleanup:audit": "ts-node scripts/cleanup-clientflow-form-templates.ts",
+    "clientflow:forms:cleanup:apply": "ts-node scripts/cleanup-clientflow-form-templates.ts --apply",
     "prisma:seed": "node prisma/seed.js"
   },
   "keywords": [],
