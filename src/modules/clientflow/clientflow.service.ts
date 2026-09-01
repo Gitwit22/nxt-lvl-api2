@@ -28,7 +28,6 @@ import type {
   CfProgramDetailAnswerGroup,
   CfProgramDetailResponse,
 } from './dto/cf-program-detail.dto';
-import { renderedSectionsReferenceTemplate } from './form-template-cleanup';
 import { FilesService } from '../files/files.service';
 
 type LiveOrganizationState = {
@@ -657,43 +656,34 @@ export class ClientflowService {
       });
       if (!template) throw new NotFoundException('Form template not found.');
 
-      const [programs, assignments, coreRenderSessions, coreSnapshots, renderSessions, snapshots] =
-        await Promise.all([
-          tx.cfProgram.count({ where: { organizationId: orgId, defaultFormTemplateId: id } }),
-          tx.cfFormAssignment.count({ where: { organizationId: orgId, formId: id } }),
-          tx.cfIntakeRenderSession.count({ where: { organizationId: orgId, coreTemplateId: id } }),
-          tx.cfIntakeSubmissionSnapshot.count({ where: { organizationId: orgId, coreTemplateId: id } }),
-          tx.cfIntakeRenderSession.findMany({
-            where: { organizationId: orgId },
-            select: { renderedSections: true },
-          }),
-          tx.cfIntakeSubmissionSnapshot.findMany({
-            where: { organizationId: orgId },
-            select: { renderedSections: true },
-          }),
-        ]);
-      const embeddedRenderSessions = renderSessions.filter(({ renderedSections }) =>
-        renderedSectionsReferenceTemplate(renderedSections, id)).length;
-      const embeddedSnapshots = snapshots.filter(({ renderedSections }) =>
-        renderedSectionsReferenceTemplate(renderedSections, id)).length;
-      const references = {
-        programs,
-        assignments,
-        renderSessions: Math.max(coreRenderSessions, embeddedRenderSessions),
-        submissionSnapshots: Math.max(coreSnapshots, embeddedSnapshots),
-      };
-      if (Object.values(references).some((count) => count > 0)) {
-        const details = Object.entries(references)
-          .filter(([, count]) => count > 0)
-          .map(([name, count]) => `${count} ${name}`)
-          .join(', ');
-        throw new BadRequestException(
-          `This form cannot be deleted because it is still referenced by ${details}.`,
-        );
+      const linkedPrograms = await tx.cfProgram.findMany({
+        where: { organizationId: orgId, defaultFormTemplateId: id },
+        select: { id: true },
+      });
+      const unlinkedProgramIds = linkedPrograms.map(({ id: programId }) => programId);
+      if (unlinkedProgramIds.length > 0) {
+        await tx.cfProgram.updateMany({
+          where: { organizationId: orgId, id: { in: unlinkedProgramIds } },
+          data: { defaultFormTemplateId: '', isActive: false },
+        });
       }
 
+      const cancelledAssignments = await tx.cfFormAssignment.updateMany({
+        where: {
+          organizationId: orgId,
+          formId: id,
+          status: { notIn: ['submitted', 'approved', 'cancelled', 'expired'] },
+        },
+        data: {
+          status: 'cancelled',
+          cancelledAt: new Date(),
+          secureLink: null,
+          secureLinkToken: null,
+        },
+      });
+
       await tx.cfFormTemplate.delete({ where: { id } });
-      return { id };
+      return { id, unlinkedProgramIds, cancelledAssignments: cancelledAssignments.count };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 

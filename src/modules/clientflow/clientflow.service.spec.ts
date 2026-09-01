@@ -378,27 +378,21 @@ describe('ClientflowService form template deletion', () => {
     partition: { appUrl: 'https://clientflow.test' },
   } as unknown as PartitionRequest;
 
-  function setup(embeddedReferences = 0) {
-    const renderedSections = embeddedReferences
-      ? [{ templateId: 'form-1', fields: [] }]
-      : [];
+  function setup(linkedProgramIds: string[] = []) {
     const tx = {
       cfFormTemplate: {
         findFirst: jest.fn().mockResolvedValue({ id: 'form-1', organizationId: 'org-1' }),
         delete: jest.fn().mockResolvedValue({ id: 'form-1' }),
       },
-      cfProgram: { count: jest.fn().mockResolvedValue(0) },
-      cfFormAssignment: { count: jest.fn().mockResolvedValue(0) },
-      cfIntakeRenderSession: {
-        count: jest.fn().mockResolvedValue(0),
-        findMany: jest.fn().mockResolvedValue(
-          Array.from({ length: embeddedReferences }, () => ({ renderedSections })),
-        ),
+      cfProgram: {
+        findMany: jest.fn().mockResolvedValue(linkedProgramIds.map((id) => ({ id }))),
+        updateMany: jest.fn().mockResolvedValue({ count: linkedProgramIds.length }),
       },
-      cfIntakeSubmissionSnapshot: {
-        count: jest.fn().mockResolvedValue(0),
-        findMany: jest.fn().mockResolvedValue([]),
+      cfFormAssignment: {
+        updateMany: jest.fn().mockResolvedValue({ count: 2 }),
       },
+      cfIntakeRenderSession: { deleteMany: jest.fn() },
+      cfIntakeSubmissionSnapshot: { deleteMany: jest.fn() },
     };
     const prisma = {
       $transaction: jest.fn().mockImplementation(async (callback) => callback(tx)),
@@ -416,16 +410,41 @@ describe('ClientflowService form template deletion', () => {
   it('deletes an unreferenced form template', async () => {
     const { service, tx } = setup();
 
-    await expect(service.deleteFormTemplate('form-1')).resolves.toEqual({ id: 'form-1' });
+    await expect(service.deleteFormTemplate('form-1')).resolves.toEqual({
+      id: 'form-1',
+      unlinkedProgramIds: [],
+      cancelledAssignments: 2,
+    });
     expect(tx.cfFormTemplate.delete).toHaveBeenCalledWith({ where: { id: 'form-1' } });
   });
 
-  it('blocks deletion when rendered intake history references the template', async () => {
-    const { service, tx } = setup(1);
+  it('unlinks programs, cancels unfinished assignments, and preserves intake history', async () => {
+    const { service, tx } = setup(['program-1']);
 
-    await expect(service.deleteFormTemplate('form-1'))
-      .rejects.toThrow('1 renderSessions');
-    expect(tx.cfFormTemplate.delete).not.toHaveBeenCalled();
+    await expect(service.deleteFormTemplate('form-1')).resolves.toEqual({
+      id: 'form-1',
+      unlinkedProgramIds: ['program-1'],
+      cancelledAssignments: 2,
+    });
+    expect(tx.cfProgram.updateMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', id: { in: ['program-1'] } },
+      data: { defaultFormTemplateId: '', isActive: false },
+    });
+    expect(tx.cfFormAssignment.updateMany).toHaveBeenCalledWith({
+      where: {
+        organizationId: 'org-1',
+        formId: 'form-1',
+        status: { notIn: ['submitted', 'approved', 'cancelled', 'expired'] },
+      },
+      data: expect.objectContaining({
+        status: 'cancelled',
+        secureLink: null,
+        secureLinkToken: null,
+      }),
+    });
+    expect(tx.cfIntakeRenderSession.deleteMany).not.toHaveBeenCalled();
+    expect(tx.cfIntakeSubmissionSnapshot.deleteMany).not.toHaveBeenCalled();
+    expect(tx.cfFormTemplate.delete).toHaveBeenCalledWith({ where: { id: 'form-1' } });
   });
 });
 
