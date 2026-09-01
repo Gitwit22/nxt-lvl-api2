@@ -17,6 +17,7 @@ export interface CreateFileUrlInput {
   contentType: string;
   action: FileAction;
   expiresInSeconds?: number;
+  bucketName?: string;
   objectKey?: string;
   subdirectory?: string;
 }
@@ -62,6 +63,7 @@ export class FilesService {
         secretAccessKey,
       },
       forcePathStyle: true,
+      requestChecksumCalculation: 'WHEN_REQUIRED',
     });
   }
 
@@ -89,7 +91,7 @@ export class FilesService {
       throw new ServiceUnavailableException('R2 is not configured.');
     }
 
-    const bucketName = this.getBucketName();
+    const bucketName = input.bucketName?.trim() || this.getBucketName();
     const objectKey = input.action === 'upload'
       ? (input.objectKey ?? this.getStorageKey(
           input.subdirectory ?? 'files',
@@ -133,12 +135,12 @@ export class FilesService {
     };
   }
 
-  async getObjectMetadata(objectKey: string): Promise<StoredObjectMetadata> {
+  async getObjectMetadata(objectKey: string, bucketName?: string): Promise<StoredObjectMetadata> {
     if (!this.s3Client) {
       throw new ServiceUnavailableException('R2 is not configured.');
     }
     const result = await this.s3Client.send(new HeadObjectCommand({
-      Bucket: this.getBucketName(),
+      Bucket: bucketName?.trim() || this.getBucketName(),
       Key: objectKey,
     }));
     return {

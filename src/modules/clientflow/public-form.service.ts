@@ -230,7 +230,14 @@ export class PublicFormService {
     });
     if (!assignment) throw new NotFoundException('Form link not found.');
 
-    const [template, client, program, programs, sectionTemplates] = await Promise.all([
+    const [
+      template,
+      client,
+      program,
+      programs,
+      sectionTemplates,
+      existingEnrollments,
+    ] = await Promise.all([
       this.prisma.cfFormTemplate.findFirst({
         where: { id: assignment.formId, organizationId: assignment.organizationId },
       }),
@@ -256,6 +263,13 @@ export class PublicFormService {
         },
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
       }),
+      this.prisma.cfProgramEnrollment.findMany({
+        where: {
+          organizationId: assignment.organizationId,
+          clientId: assignment.clientId,
+        },
+        select: { programId: true },
+      }),
     ]);
 
     if (!template) throw new NotFoundException('Form configuration not found.');
@@ -276,7 +290,9 @@ export class PublicFormService {
     }
 
     const fields = ensureCoreIntakeFields(template.fields);
-    const activeProgramIds = new Set(programs.map(({ id }) => id));
+    const enrolledProgramIds = new Set(existingEnrollments.map(({ programId }) => programId));
+    const eligiblePrograms = programs.filter(({ id }) => !enrolledProgramIds.has(id));
+    const activeProgramIds = new Set(eligiblePrograms.map(({ id }) => id));
     const renderedSections: RenderedSection[] = [
       {
         id: `core:${template.id}:${template.version}`,
@@ -288,7 +304,7 @@ export class PublicFormService {
         description: template.description,
         fields,
       },
-      ...programs.map((activeProgram): RenderedSection => {
+      ...eligiblePrograms.map((activeProgram): RenderedSection => {
         const matchingSections = sectionTemplates.filter(
           (candidate) => candidate.programId === activeProgram.id && activeProgramIds.has(activeProgram.id),
         );
@@ -367,7 +383,7 @@ export class PublicFormService {
       },
       intakeConfiguration: {
         configurationToken,
-        programs,
+        programs: eligiblePrograms,
         sections: renderedSections,
       },
       contact: {
@@ -417,9 +433,6 @@ export class PublicFormService {
     if (!coreSection) throw new BadRequestException('Core intake configuration is missing.');
 
     const selectedProgramIds = [...new Set(dto.selectedProgramIds)];
-    if (selectedProgramIds.length === 0) {
-      throw new BadRequestException('Select at least one program.');
-    }
     const selectedProgramSet = new Set(selectedProgramIds);
     const selectedSections = renderedSections.filter(
       (section) => section.kind === 'core'
@@ -616,15 +629,17 @@ export class PublicFormService {
           renderedSections: selectedSections as unknown as Prisma.InputJsonValue,
         },
       });
-      await tx.cfIntakeSubmissionProgram.createMany({
-        data: selectedProgramIds.map((programId) => ({
-          organizationId: assignment.organizationId,
-          intakeSubmissionId: submission.id,
-          programId,
-          enrollmentId: enrollmentByProgram.get(programId)!.id,
-          responsePayload: (dto.programResponses[programId] ?? {}) as Prisma.InputJsonValue,
-        })),
-      });
+      if (selectedProgramIds.length > 0) {
+        await tx.cfIntakeSubmissionProgram.createMany({
+          data: selectedProgramIds.map((programId) => ({
+            organizationId: assignment.organizationId,
+            intakeSubmissionId: submission.id,
+            programId,
+            enrollmentId: enrollmentByProgram.get(programId)!.id,
+            responsePayload: (dto.programResponses[programId] ?? {}) as Prisma.InputJsonValue,
+          })),
+        });
+      }
       await tx.cfFormAssignment.update({
         where: { id: assignment.id },
         data: {

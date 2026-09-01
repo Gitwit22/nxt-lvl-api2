@@ -597,3 +597,140 @@ describe('ClientflowService.removeDemo', () => {
     expect(primaryPrisma.auditLog.create).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('ClientflowService document storage', () => {
+  const originalBucketName = process.env['CLIENTFLOW_R2_BUCKET_NAME'];
+  const request = {
+    headers: { 'x-org-id': 'org-1', 'x-admin-email': 'admin@example.com' },
+    partition: { appUrl: 'https://clientflow.test' },
+  } as unknown as PartitionRequest;
+
+  afterAll(() => {
+    if (originalBucketName === undefined) delete process.env['CLIENTFLOW_R2_BUCKET_NAME'];
+    else process.env['CLIENTFLOW_R2_BUCKET_NAME'] = originalBucketName;
+  });
+
+  function setup() {
+    const prisma = {
+      cfClient: { findFirst: jest.fn().mockResolvedValue({ id: 'client-1' }) },
+      cfDocument: {
+        create: jest.fn(),
+        delete: jest.fn(),
+        findFirst: jest.fn(),
+        update: jest.fn(),
+      },
+    };
+    const files = {
+      createFileUrl: jest.fn(),
+      getBucketName: jest.fn().mockReturnValue('fallback-bucket'),
+      getObjectMetadata: jest.fn(),
+      getStorageKey: jest.fn().mockReturnValue('clientflow-hub/organizations/org-1/document-1'),
+    };
+    const service = new ClientflowService(
+      request,
+      prisma as unknown as ClientflowPrismaService,
+      {} as PrismaService,
+      {} as NotificationsService,
+      files as unknown as FilesService,
+    );
+    return { files, prisma, service };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env['CLIENTFLOW_R2_BUCKET_NAME'] = 'eamanagement';
+  });
+
+  it('persists and presigns new uploads with the dedicated bucket', async () => {
+    const { files, prisma, service } = setup();
+    const document = { id: 'document-1', bucket: 'eamanagement' };
+    prisma.cfDocument.create.mockResolvedValue(document);
+    files.createFileUrl.mockResolvedValue({
+      bucketName: 'eamanagement',
+      objectKey: 'clientflow-hub/organizations/org-1/document-1',
+      url: 'https://upload.test',
+      expiresInSeconds: 900,
+    });
+
+    await expect(service.createDocumentUpload('client-1', {
+      name: 'application.pdf',
+      type: 'application/pdf',
+      byteSize: 128,
+    })).resolves.toMatchObject({ document, uploadUrl: 'https://upload.test' });
+
+    expect(prisma.cfDocument.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ bucket: 'eamanagement' }),
+    });
+    expect(files.createFileUrl).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'upload',
+      bucketName: 'eamanagement',
+    }));
+  });
+
+  it('falls back to the existing bucket when no dedicated bucket is configured', async () => {
+    delete process.env['CLIENTFLOW_R2_BUCKET_NAME'];
+    const { files, prisma, service } = setup();
+    prisma.cfDocument.create.mockResolvedValue({ id: 'document-1', bucket: 'fallback-bucket' });
+    files.createFileUrl.mockResolvedValue({
+      bucketName: 'fallback-bucket',
+      objectKey: 'clientflow-hub/organizations/org-1/document-1',
+      url: 'https://upload.test',
+      expiresInSeconds: 900,
+    });
+
+    await service.createDocumentUpload('client-1', {
+      name: 'application.pdf',
+      type: 'application/pdf',
+      byteSize: 128,
+    });
+
+    expect(files.getBucketName).toHaveBeenCalledTimes(1);
+    expect(prisma.cfDocument.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ bucket: 'fallback-bucket' }),
+    });
+    expect(files.createFileUrl).toHaveBeenCalledWith(expect.objectContaining({
+      bucketName: 'fallback-bucket',
+    }));
+  });
+
+  it('checks uploaded metadata in the bucket stored on the document', async () => {
+    const { files, prisma, service } = setup();
+    prisma.cfDocument.findFirst.mockResolvedValue({
+      id: 'document-1',
+      bucket: 'stored-bucket',
+      objectKey: 'clientflow-hub/document-1',
+      byteSize: 128,
+      type: 'application/pdf',
+    });
+    prisma.cfDocument.update.mockResolvedValue({ id: 'document-1', uploadStatus: 'ready' });
+    files.getObjectMetadata.mockResolvedValue({ byteSize: 128, contentType: 'application/pdf' });
+
+    await service.completeDocumentUpload('document-1');
+
+    expect(files.getObjectMetadata).toHaveBeenCalledWith(
+      'clientflow-hub/document-1',
+      'stored-bucket',
+    );
+  });
+
+  it('presigns downloads from the bucket stored on the document', async () => {
+    const { files, prisma, service } = setup();
+    prisma.cfDocument.findFirst.mockResolvedValue({
+      id: 'document-1',
+      bucket: 'stored-bucket',
+      objectKey: 'clientflow-hub/document-1',
+      name: 'application.pdf',
+      type: 'application/pdf',
+    });
+    files.createFileUrl.mockResolvedValue({ url: 'https://download.test', expiresInSeconds: 300 });
+
+    await expect(service.getDocumentDownload('document-1')).resolves.toEqual({
+      url: 'https://download.test',
+      expiresInSeconds: 300,
+    });
+    expect(files.createFileUrl).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'download',
+      bucketName: 'stored-bucket',
+    }));
+  });
+});

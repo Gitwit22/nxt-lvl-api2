@@ -275,6 +275,27 @@ describe('PublicFormService.submitPublicForm', () => {
     });
   });
 
+  it('submits profile updates without selecting an additional program', async () => {
+    const { service, prisma, tx } = setup();
+    prisma.cfProgram.findMany.mockResolvedValue([]);
+
+    await expect(service.submitPublicForm('secure-token', {
+      ...dto,
+      idempotencyKey: 'request-without-program',
+      selectedProgramIds: [],
+      programResponses: {},
+    })).resolves.toEqual({
+      success: true,
+      enrollmentIds: [],
+    });
+
+    expect(tx.cfProgramEnrollment.create).not.toHaveBeenCalled();
+    expect(tx.cfIntakeSubmissionProgram.createMany).not.toHaveBeenCalled();
+    expect(tx.cfIntakeSubmissionSnapshot.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ selectedProgramIds: [] }),
+    });
+  });
+
   it('still rejects a missing required non-file program answer', async () => {
     const { service, prisma } = setup();
     const missingGrowthGoal = {
@@ -371,6 +392,7 @@ describe('PublicFormService.getPublicForm', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([program]),
       },
+      cfProgramEnrollment: { findMany: jest.fn().mockResolvedValue([]) },
       cfIntakeRenderSession: { create: jest.fn().mockResolvedValue({}) },
     };
     return {
@@ -467,6 +489,23 @@ describe('PublicFormService.getPublicForm', () => {
     expect(result.intakeConfiguration.sections[1]).toMatchObject({
       templateId: 'program-template',
       fields: [expect.objectContaining({ label: 'Configured question' })],
+    });
+  });
+
+  it('omits programs that already have an enrollment for the client', async () => {
+    const { service, prisma } = setup([]);
+    prisma.cfProgramEnrollment.findMany.mockResolvedValue([{ programId: program.id }]);
+
+    const result = await service.getPublicForm('secure-token');
+
+    expect(result.intakeConfiguration.programs).toEqual([]);
+    expect(result.intakeConfiguration.sections).toHaveLength(1);
+    expect(prisma.cfProgramEnrollment.findMany).toHaveBeenCalledWith({
+      where: {
+        organizationId: assignment.organizationId,
+        clientId: assignment.clientId,
+      },
+      select: { programId: true },
     });
   });
 });

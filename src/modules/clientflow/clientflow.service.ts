@@ -1101,6 +1101,7 @@ export class ClientflowService {
     const objectKey = this.files.getStorageKey(
       'organizations', orgId, 'clients', clientId, 'documents', randomUUID(),
     );
+    const bucketName = process.env['CLIENTFLOW_R2_BUCKET_NAME']?.trim() || this.files.getBucketName();
     const document = await this.prisma.cfDocument.create({
       data: {
         organizationId: orgId,
@@ -1110,7 +1111,7 @@ export class ClientflowService {
         type: dto.type,
         url: '',
         objectKey,
-        bucket: this.files.getBucketName(),
+        bucket: bucketName,
         byteSize: dto.byteSize,
         uploadStatus: 'pending',
         uploadedBy: (this.request.headers['x-admin-email'] as string | undefined) ?? 'Admin',
@@ -1121,6 +1122,7 @@ export class ClientflowService {
         fileName: dto.name,
         contentType: dto.type,
         action: 'upload',
+        bucketName,
         objectKey,
         expiresInSeconds: 900,
       });
@@ -1137,7 +1139,7 @@ export class ClientflowService {
       where: { id: documentId, organizationId: orgId, uploadStatus: 'pending' },
     });
     if (!document?.objectKey) throw new NotFoundException('Pending document upload not found.');
-    const metadata = await this.files.getObjectMetadata(document.objectKey);
+    const metadata = await this.files.getObjectMetadata(document.objectKey, document.bucket ?? undefined);
     if (metadata.byteSize !== document.byteSize || metadata.contentType !== document.type) {
       throw new BadRequestException('Uploaded document does not match the upload request.');
     }
@@ -1162,6 +1164,7 @@ export class ClientflowService {
       fileName: document.name,
       contentType: document.type,
       action: 'download',
+      bucketName: document.bucket ?? undefined,
       objectKey: document.objectKey,
       expiresInSeconds: 300,
     });
