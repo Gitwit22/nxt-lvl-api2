@@ -876,6 +876,53 @@ export class ClientflowService {
     return { ...submission, client, assignment, snapshot, programs };
   }
 
+  // ─── Notifications ────────────────────────────────────────────────────────
+
+  async listNotifications(limit = 30) {
+    const orgId = await this.getOrgId();
+    const adminId = this.request.headers['x-admin-id'] as string | undefined;
+    if (!adminId) throw new NotFoundException('Admin context missing.');
+    const where = { organizationId: orgId, recipientAdminId: adminId };
+    const [items, unreadCount] = await Promise.all([
+      this.prisma.cfNotification.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: Math.max(1, Math.min(limit, 100)),
+      }),
+      this.prisma.cfNotification.count({ where: { ...where, readAt: null } }),
+    ]);
+    return { items, unreadCount };
+  }
+
+  async markNotificationRead(id: string) {
+    const orgId = await this.getOrgId();
+    const adminId = this.request.headers['x-admin-id'] as string | undefined;
+    if (!adminId) throw new NotFoundException('Admin context missing.');
+    const updated = await this.prisma.cfNotification.updateMany({
+      where: { id, organizationId: orgId, recipientAdminId: adminId, readAt: null },
+      data: { readAt: new Date() },
+    });
+    if (updated.count === 0) {
+      const exists = await this.prisma.cfNotification.findFirst({
+        where: { id, organizationId: orgId, recipientAdminId: adminId },
+        select: { id: true },
+      });
+      if (!exists) throw new NotFoundException('Notification not found.');
+    }
+    return { id, read: true };
+  }
+
+  async markAllNotificationsRead() {
+    const orgId = await this.getOrgId();
+    const adminId = this.request.headers['x-admin-id'] as string | undefined;
+    if (!adminId) throw new NotFoundException('Admin context missing.');
+    const updated = await this.prisma.cfNotification.updateMany({
+      where: { organizationId: orgId, recipientAdminId: adminId, readAt: null },
+      data: { readAt: new Date() },
+    });
+    return { updated: updated.count };
+  }
+
   // ─── Global org-wide lists ─────────────────────────────────────────────────
 
   async listAllTerms(limit: number = 200, offset: number = 0) {
@@ -1265,6 +1312,7 @@ export class ClientflowService {
         where: { organizationId: orgId, enrollmentId: { in: demoEnrollmentIds } },
       });
       const removedTasks = await tx.cfTask.deleteMany({ where: demoWhere });
+      const removedNotifications = await tx.cfNotification.deleteMany({ where: demoWhere });
       const removedActivity = await tx.cfActivityLog.deleteMany({ where: demoWhere });
       const removedCommunications = await tx.cfCommunication.deleteMany({ where: demoWhere });
       const removedDocuments = await tx.cfDocument.deleteMany({ where: demoWhere });
@@ -1304,6 +1352,7 @@ export class ClientflowService {
         intakeSubmissionPrograms: removedSubmissionPrograms.count,
         intakeRenderSessions: removedRenderSessions.count,
         tasks: removedTasks.count,
+        notifications: removedNotifications.count,
         formAssignments: removedAssignments.count,
         terms: removedTerms.count,
         monitoring: removedProgressMonitoring,

@@ -584,6 +584,28 @@ export class PublicFormService {
           submittedAt: now,
         },
       });
+      const recipients = await tx.adminUser.findMany({
+        where: { organizationId: assignment.organizationId, isActive: true },
+        select: { id: true },
+      });
+      if (recipients.length > 0) {
+        await tx.cfNotification.createMany({
+          data: recipients.map(({ id: recipientAdminId }) => ({
+            organizationId: assignment.organizationId,
+            recipientAdminId,
+            type: 'form_submitted',
+            title: 'Form submitted',
+            message: `${existingClient.primaryContactName} submitted ${coreSection.title} for ${existingClient.businessName}.`,
+            actionUrl: `/clients/${assignment.clientId}`,
+            sourceType: 'form_assignment',
+            sourceId: assignment.id,
+            clientId: assignment.clientId,
+            submissionId: submission.id,
+            isDemo: assignment.isDemo,
+          })),
+          skipDuplicates: true,
+        });
+      }
       await tx.cfIntakeSubmissionSnapshot.create({
         data: {
           organizationId: assignment.organizationId,

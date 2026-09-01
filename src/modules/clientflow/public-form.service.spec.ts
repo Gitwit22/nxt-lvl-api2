@@ -101,6 +101,10 @@ describe('PublicFormService.submitPublicForm', () => {
       cfFormAssignment: { update: jest.fn().mockResolvedValue({}) },
       cfClient: { update: jest.fn().mockResolvedValue({}) },
       cfActivityLog: { create: jest.fn().mockResolvedValue({}) },
+      adminUser: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'admin-1' }, { id: 'admin-2' }]),
+      },
+      cfNotification: { createMany: jest.fn().mockResolvedValue({ count: 2 }) },
     };
     const prisma = {
       cfFormAssignment: { findUnique: jest.fn().mockResolvedValue(assignment) },
@@ -224,6 +228,25 @@ describe('PublicFormService.submitPublicForm', () => {
     const clientUpdate = tx.cfClient.update.mock.calls[0][0];
     expect(clientUpdate.data).not.toHaveProperty('referralDetail');
     expect(clientUpdate.data.intake).not.toHaveProperty('referralDetail');
+    expect(tx.cfNotification.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          recipientAdminId: 'admin-1',
+          type: 'form_submitted',
+          sourceId: 'assignment-1',
+          submissionId: 'submission-1',
+          actionUrl: '/clients/client-1',
+        }),
+        expect.objectContaining({
+          recipientAdminId: 'admin-2',
+          type: 'form_submitted',
+          sourceId: 'assignment-1',
+          submissionId: 'submission-1',
+          actionUrl: '/clients/client-1',
+        }),
+      ],
+      skipDuplicates: true,
+    });
   });
 
   it('does not replace a start date already established on an existing enrollment', async () => {

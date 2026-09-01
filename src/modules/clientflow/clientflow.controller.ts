@@ -150,6 +150,22 @@ export class ClientflowController {
   @Get('intake-submissions/:id')
   getIntakeSubmission(@Param('id') id: string) { return this.svc.getIntakeSubmission(id); }
 
+  // ─── Notifications ────────────────────────────────────────────────────────
+
+  @Get('notifications')
+  listNotifications(@Query('limit') limit?: string) {
+    const parsedLimit = Number(limit);
+    return this.svc.listNotifications(
+      Number.isInteger(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 100) : 30,
+    );
+  }
+
+  @Patch('notifications/read-all')
+  markAllNotificationsRead() { return this.svc.markAllNotificationsRead(); }
+
+  @Patch('notifications/:id/read')
+  markNotificationRead(@Param('id') id: string) { return this.svc.markNotificationRead(id); }
+
   // ─── Global lists (all records for org) ────────────────────────────────────
 
   @Get('terms')

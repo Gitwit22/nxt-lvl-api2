@@ -467,6 +467,74 @@ describe('ClientflowService form template deletion', () => {
   });
 });
 
+describe('ClientflowService notifications', () => {
+  const request = {
+    headers: { 'x-org-id': 'org-1', 'x-admin-id': 'admin-1' },
+    partition: { appUrl: 'https://clientflow.test' },
+  } as unknown as PartitionRequest;
+
+  function setup() {
+    const prisma = {
+      cfNotification: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'notification-1', readAt: null }]),
+        count: jest.fn().mockResolvedValue(1),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findFirst: jest.fn().mockResolvedValue({ id: 'notification-1' }),
+      },
+    };
+    const service = new ClientflowService(
+      request,
+      prisma as unknown as ClientflowPrismaService,
+      {} as PrismaService,
+      {} as NotificationsService,
+      {} as FilesService,
+    );
+    return { service, prisma };
+  }
+
+  it('lists only the current admin notifications and returns the unread count', async () => {
+    const { service, prisma } = setup();
+
+    await expect(service.listNotifications(20)).resolves.toEqual({
+      items: [{ id: 'notification-1', readAt: null }],
+      unreadCount: 1,
+    });
+    expect(prisma.cfNotification.findMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', recipientAdminId: 'admin-1' },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+  });
+
+  it('marks one notification read within the current admin scope', async () => {
+    const { service, prisma } = setup();
+
+    await expect(service.markNotificationRead('notification-1')).resolves.toEqual({
+      id: 'notification-1',
+      read: true,
+    });
+    expect(prisma.cfNotification.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'notification-1',
+        organizationId: 'org-1',
+        recipientAdminId: 'admin-1',
+        readAt: null,
+      },
+      data: { readAt: expect.any(Date) },
+    });
+  });
+
+  it('marks all current admin notifications read', async () => {
+    const { service, prisma } = setup();
+
+    await expect(service.markAllNotificationsRead()).resolves.toEqual({ updated: 1 });
+    expect(prisma.cfNotification.updateMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', recipientAdminId: 'admin-1', readAt: null },
+      data: { readAt: expect.any(Date) },
+    });
+  });
+});
+
 describe('ClientflowService.removeDemo', () => {
   it('completes the live-mode transition when the partition has no AuditLog table', async () => {
     const request = {

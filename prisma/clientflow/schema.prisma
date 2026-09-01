@@ -46,8 +46,33 @@ model AdminUser {
   principalOf  Organization?    @relation("OrganizationPrincipal")
   invitation   AdminInvitation?
   sessions     AuthSession[]
+  notifications CfNotification[]
 
   @@index([organizationId, role])
+}
+
+model CfNotification {
+  id               String    @id @default(cuid())
+  organizationId   String
+  recipientAdminId String
+  type             String
+  title            String
+  message          String
+  actionUrl        String?
+  sourceType       String
+  sourceId         String
+  clientId         String?
+  submissionId     String?
+  readAt           DateTime?
+  isDemo           Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+
+  recipient AdminUser @relation(fields: [recipientAdminId], references: [id], onDelete: Cascade)
+
+  @@unique([recipientAdminId, sourceType, sourceId])
+  @@index([organizationId, recipientAdminId, createdAt])
+  @@index([organizationId, recipientAdminId, readAt])
+  @@index([organizationId, isDemo])
 }
 
 model AdminInvitation {
