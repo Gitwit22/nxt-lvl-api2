@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, Scope, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, Scope, UnauthorizedException } from '@nestjs/common';
 import { REQUEST } from '@nestjs/core';
 import { CfEnrollmentMonitoring, Prisma } from '../../generated/clientflow';
 import { compare } from 'bcrypt';
@@ -175,7 +175,6 @@ function labeledAnswers(fields: DetailField[], responses: unknown): CfProgramDet
 
 @Injectable({ scope: Scope.REQUEST })
 export class ClientflowService {
-  private readonly logger = new Logger(ClientflowService.name);
   private _orgId: string | null = null;
 
   constructor(
@@ -610,35 +609,7 @@ export class ClientflowService {
       },
     });
 
-    const normalized = normalizeFormTemplate(updated);
-    if (id === 'form-inspired-detroit' || id === 'form-inspired-detroit-approved') {
-      this.logger.log(JSON.stringify({
-        diagnostic: 'form-template-save:service',
-        templateId: id,
-        organizationId: orgId,
-        persisted: {
-          programId: updated.programId,
-          scope: updated.scope,
-          fieldCount: Array.isArray(updated.fields) ? updated.fields.length : null,
-          fieldIds: Array.isArray(updated.fields)
-            ? updated.fields.map((field) =>
-              field && typeof field === 'object' && !Array.isArray(field) && 'id' in field
-                ? field.id
-                : null)
-            : null,
-          fields: updated.fields,
-        },
-        normalized: {
-          programId: normalized.programId,
-          scope: normalized.scope,
-          fieldCount: normalized.fields.length,
-          fieldIds: normalized.fields.map((field) => field.id),
-          fields: normalized.fields,
-        },
-      }));
-    }
-
-    return normalized;
+    return normalizeFormTemplate(updated);
   }
 
   // ─── Form Assignments ────────────────────────────────────────────────────────

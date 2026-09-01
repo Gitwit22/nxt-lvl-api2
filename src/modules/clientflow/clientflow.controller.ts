@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, Param, Patch, Post, Query, UseGuards, Header, Logger,
+  Body, Controller, Get, Param, Patch, Post, Query, UseGuards, Header,
 } from '@nestjs/common';
 import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
 import { OrgAdminGuard } from '../../common/guards/org-admin.guard';
@@ -33,8 +33,6 @@ import { MonitoringService } from './monitoring.service';
 @Controller('admin/cf')
 @UseGuards(AdminJwtGuard)
 export class ClientflowController {
-  private readonly logger = new Logger(ClientflowController.name);
-
   constructor(
     private readonly svc: ClientflowService,
     private readonly enrollments: EnrollmentService,
@@ -110,21 +108,7 @@ export class ClientflowController {
   @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
   @Header('Pragma', 'no-cache')
   @Header('Expires', '0')
-  updateFormTemplate(@Param('id') id: string, @Body() dto: UpdateCfFormTemplateDto) {
-    if (id === 'form-inspired-detroit' || id === 'form-inspired-detroit-approved') {
-      this.logger.log(JSON.stringify({
-        diagnostic: 'form-template-save:controller',
-        templateId: id,
-        programId: dto.programId,
-        scope: dto.scope,
-        fieldCount: dto.fields?.length ?? null,
-        fieldIds: dto.fields?.map((field) =>
-          field && typeof field === 'object' && 'id' in field ? field.id : null),
-        fields: dto.fields,
-      }));
-    }
-    return this.svc.updateFormTemplate(id, dto);
-  }
+  updateFormTemplate(@Param('id') id: string, @Body() dto: UpdateCfFormTemplateDto) { return this.svc.updateFormTemplate(id, dto); }
 
   // ─── Form Assignments ────────────────────────────────────────────────────────
 
