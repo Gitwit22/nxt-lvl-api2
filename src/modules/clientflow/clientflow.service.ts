@@ -334,40 +334,72 @@ export class ClientflowService {
 
   async createProgram(dto: CreateCfProgramDto) {
     const orgId = await this.getOrgId();
-    return this.prisma.cfProgram.create({
-      data: {
-        ...(dto.id && { id: dto.id }),
-        organizationId: orgId,
-        name: dto.name,
-        description: dto.description,
-        isActive: dto.isActive ?? true,
-        defaultFormTemplateId: dto.defaultFormTemplateId,
-        defaultMonitoringFrequency: dto.defaultMonitoringFrequency,
-        defaultContractTemplateId: dto.defaultContractTemplateId,
-        defaultWorkflow: (dto.defaultWorkflow ?? []) as Prisma.InputJsonValue,
-        requiredDocuments: (dto.requiredDocuments ?? []) as Prisma.InputJsonValue,
-        statusPipeline: (dto.statusPipeline ?? []) as Prisma.InputJsonValue,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const created = await tx.cfProgram.create({
+        data: {
+          ...(dto.id && { id: dto.id }),
+          organizationId: orgId,
+          name: dto.name,
+          description: dto.description,
+          isActive: dto.isActive ?? true,
+          defaultFormTemplateId: dto.defaultFormTemplateId,
+          defaultMonitoringFrequency: dto.defaultMonitoringFrequency,
+          defaultContractTemplateId: dto.defaultContractTemplateId,
+          defaultWorkflow: (dto.defaultWorkflow ?? []) as Prisma.InputJsonValue,
+          requiredDocuments: (dto.requiredDocuments ?? []) as Prisma.InputJsonValue,
+          statusPipeline: (dto.statusPipeline ?? []) as Prisma.InputJsonValue,
+        },
+      });
+      await this.linkProgramForm(tx, orgId, created.id, dto.defaultFormTemplateId);
+      return created;
     });
   }
 
   async updateProgram(id: string, dto: UpdateCfProgramDto) {
     const orgId = await this.getOrgId();
-    const existing = await this.prisma.cfProgram.findFirst({ where: { id, organizationId: orgId } });
-    if (!existing) throw new NotFoundException('Program not found.');
-    return this.prisma.cfProgram.update({
-      where: { id },
-      data: {
-        ...(dto.name !== undefined && { name: dto.name }),
-        ...(dto.description !== undefined && { description: dto.description }),
-        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
-        ...(dto.defaultFormTemplateId !== undefined && { defaultFormTemplateId: dto.defaultFormTemplateId }),
-        ...(dto.defaultMonitoringFrequency !== undefined && { defaultMonitoringFrequency: dto.defaultMonitoringFrequency }),
-        ...(dto.defaultContractTemplateId !== undefined && { defaultContractTemplateId: dto.defaultContractTemplateId }),
-        ...(dto.defaultWorkflow !== undefined && { defaultWorkflow: dto.defaultWorkflow as Prisma.InputJsonValue }),
-        ...(dto.requiredDocuments !== undefined && { requiredDocuments: dto.requiredDocuments as Prisma.InputJsonValue }),
-        ...(dto.statusPipeline !== undefined && { statusPipeline: dto.statusPipeline as Prisma.InputJsonValue }),
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.cfProgram.findFirst({ where: { id, organizationId: orgId } });
+      if (!existing) throw new NotFoundException('Program not found.');
+      if (dto.defaultFormTemplateId !== undefined) {
+        await this.linkProgramForm(tx, orgId, id, dto.defaultFormTemplateId);
+      }
+      return tx.cfProgram.update({
+        where: { id },
+        data: {
+          ...(dto.name !== undefined && { name: dto.name }),
+          ...(dto.description !== undefined && { description: dto.description }),
+          ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+          ...(dto.defaultFormTemplateId !== undefined && { defaultFormTemplateId: dto.defaultFormTemplateId }),
+          ...(dto.defaultMonitoringFrequency !== undefined && { defaultMonitoringFrequency: dto.defaultMonitoringFrequency }),
+          ...(dto.defaultContractTemplateId !== undefined && { defaultContractTemplateId: dto.defaultContractTemplateId }),
+          ...(dto.defaultWorkflow !== undefined && { defaultWorkflow: dto.defaultWorkflow as Prisma.InputJsonValue }),
+          ...(dto.requiredDocuments !== undefined && { requiredDocuments: dto.requiredDocuments as Prisma.InputJsonValue }),
+          ...(dto.statusPipeline !== undefined && { statusPipeline: dto.statusPipeline as Prisma.InputJsonValue }),
+        },
+      });
+    });
+  }
+
+  private async linkProgramForm(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    programId: string,
+    templateId: string,
+  ): Promise<void> {
+    const template = await tx.cfFormTemplate.findFirst({
+      where: { id: templateId, organizationId },
+    });
+    if (!template) throw new BadRequestException('The selected form template was not found.');
+    if (!template.isActive) throw new BadRequestException('The selected form template is inactive.');
+    if (template.scope === 'master_core') {
+      throw new BadRequestException('The Master Intake cannot be used as a program form.');
+    }
+    if (template.programId !== null && template.programId !== programId) {
+      throw new BadRequestException('The selected form template belongs to another program.');
+    }
+    await tx.cfFormTemplate.update({
+      where: { id: template.id },
+      data: { programId, scope: 'program_section' },
     });
   }
 

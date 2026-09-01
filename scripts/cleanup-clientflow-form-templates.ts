@@ -1,5 +1,9 @@
 import { Prisma, PrismaClient } from '../src/generated/clientflow';
-import { normalizeProgramFormFields } from '../src/modules/clientflow/form-field-mapping';
+import {
+  ensureCoreIntakeFields,
+  normalizeProgramFormFields,
+  normalizePublicFormFields,
+} from '../src/modules/clientflow/form-field-mapping';
 import {
   FieldDefinitionConflictError,
   inventoryTemplateFields,
@@ -9,8 +13,11 @@ import {
 
 const prisma = new PrismaClient();
 const apply = process.argv.includes('--apply');
+const inventory = process.argv.includes('--inventory');
+const recovery = process.argv.includes('--recovery');
 const organizationId = argumentValue('--organization-id');
 const requestedMapping = argumentValue('--mapping');
+const restoreTemplateId = argumentValue('--restore-template');
 const confirmation = argumentValue('--confirm');
 
 const mappings = {
@@ -29,6 +36,282 @@ const mappings = {
 
 type MappingName = keyof typeof mappings;
 type DbClient = Prisma.TransactionClient | PrismaClient;
+
+function effectiveScope(scope: string, programId: string | null): string {
+  return scope === 'legacy' && programId !== null ? 'program_section' : scope;
+}
+
+function normalizedFields(template: {
+  id: string;
+  programId: string | null;
+  scope: string;
+  fields: Prisma.JsonValue;
+}) {
+  const scope = effectiveScope(template.scope, template.programId);
+  if (scope === 'master_core') return ensureCoreIntakeFields(template.fields);
+  if (scope === 'program_section') {
+    return normalizeProgramFormFields(template.fields, template.programId, template.id);
+  }
+  return normalizePublicFormFields(template.fields);
+}
+
+function rawFieldIds(fields: Prisma.JsonValue): string[] {
+  if (!Array.isArray(fields)) return [];
+  return fields.flatMap((field) => {
+    if (field === null || typeof field !== 'object' || Array.isArray(field)) return [];
+    const id = (field as Record<string, Prisma.JsonValue>).id;
+    return typeof id === 'string' && id.trim() ? [id.trim()] : [];
+  });
+}
+
+async function auditAllTemplates(): Promise<void> {
+  const [templates, programs] = await Promise.all([
+    prisma.cfFormTemplate.findMany({
+      where: { organizationId },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
+    }),
+    prisma.cfProgram.findMany({
+      where: { organizationId },
+      select: { id: true, name: true, isActive: true },
+      orderBy: { name: 'asc' },
+    }),
+  ]);
+  const programById = new Map(programs.map((program) => [program.id, program]));
+  const activeSections = templates.filter((template) =>
+    template.isActive && effectiveScope(template.scope, template.programId) === 'program_section');
+  const selectedByProgram = new Map(programs.map((program) => {
+    const candidates = activeSections.filter((template) => template.programId === program.id);
+    const selected = candidates.find((template) => template.scope === 'program_section') ?? candidates[0];
+    return [program.id, selected?.id ?? null];
+  }));
+
+  const results = templates.map((template) => {
+    const rawIds = rawFieldIds(template.fields);
+    const duplicateIds = [...new Set(rawIds.filter((id, index) => rawIds.indexOf(id) !== index))];
+    const rawElementCount = Array.isArray(template.fields) ? template.fields.length : 0;
+    const unusableElementCount = rawElementCount - rawIds.length;
+    const normalized = normalizedFields(template);
+    const normalizedIds = normalized.map(({ id }) => id);
+    const selectedTemplateId = template.programId
+      ? selectedByProgram.get(template.programId) ?? null
+      : null;
+    const warnings = [
+      ...(!Array.isArray(template.fields) ? ['fields-not-array'] : []),
+      ...(unusableElementCount > 0
+        ? [`${unusableElementCount}-unusable-field-elements`]
+        : []),
+      ...(duplicateIds.length > 0 ? ['duplicate-field-ids'] : []),
+      ...(template.isActive && template.programId && selectedTemplateId !== template.id
+        ? [`shadowed-by:${selectedTemplateId}`]
+        : []),
+      ...(template.isActive && template.programId && !programById.get(template.programId)?.isActive
+        ? ['program-inactive-or-missing']
+        : []),
+      ...(template.isActive && rawIds.length === 0 && normalizedIds.length === 0
+        ? ['active-template-has-no-questions']
+        : []),
+    ];
+    return {
+      id: template.id,
+      name: template.name,
+      isActive: template.isActive,
+      scope: template.scope,
+      effectiveScope: effectiveScope(template.scope, template.programId),
+      programId: template.programId,
+      programName: template.programId ? programById.get(template.programId)?.name ?? null : null,
+      selectedForPublicProgram: selectedTemplateId === template.id,
+      rawFieldIds: rawIds,
+      normalizedFieldIds: normalizedIds,
+      unusableElementCount,
+      duplicateIds,
+      warnings,
+    };
+  });
+
+  console.log(JSON.stringify({
+    mode: 'ALL_TEMPLATE_INVENTORY',
+    organizationId,
+    templateCount: results.length,
+    warningCount: results.filter(({ warnings }) => warnings.length > 0).length,
+    templates: results,
+  }, null, 2));
+}
+
+function historicalSections(value: Prisma.JsonValue): Array<{
+  templateId: string;
+  templateVersion: number;
+  fields: ReturnType<typeof normalizePublicFormFields>;
+}> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((section) => {
+    if (section === null || typeof section !== 'object' || Array.isArray(section)) return [];
+    const candidate = section as Record<string, Prisma.JsonValue>;
+    if (typeof candidate.templateId !== 'string') return [];
+    const fields = normalizePublicFormFields(candidate.fields);
+    if (fields.length === 0) return [];
+    return [{
+      templateId: candidate.templateId,
+      templateVersion: typeof candidate.templateVersion === 'number'
+        ? candidate.templateVersion
+        : 0,
+      fields,
+    }];
+  });
+}
+
+async function auditHistoricalRecovery(): Promise<void> {
+  const [templates, renderSessions, snapshots] = await Promise.all([
+    prisma.cfFormTemplate.findMany({ where: { organizationId }, orderBy: { id: 'asc' } }),
+    prisma.cfIntakeRenderSession.findMany({
+      where: { organizationId },
+      select: { createdAt: true, renderedSections: true },
+    }),
+    prisma.cfIntakeSubmissionSnapshot.findMany({
+      where: { organizationId },
+      select: { createdAt: true, renderedSections: true },
+    }),
+  ]);
+  const damagedTemplates = templates.filter((template) => {
+    const rawIds = rawFieldIds(template.fields);
+    const rawElementCount = Array.isArray(template.fields) ? template.fields.length : 0;
+    return !Array.isArray(template.fields)
+      || rawElementCount > rawIds.length
+      || (template.isActive && normalizedFields(template).length === 0);
+  });
+  const records = [
+    ...renderSessions.map((record) => ({ ...record, source: 'render_session' as const })),
+    ...snapshots.map((record) => ({ ...record, source: 'submission_snapshot' as const })),
+  ];
+
+  const results = damagedTemplates.map((template) => {
+    const candidates = new Map<string, {
+      templateVersion: number;
+      fields: ReturnType<typeof normalizePublicFormFields>;
+      occurrences: number;
+      latestSeenAt: string;
+      sources: Set<string>;
+    }>();
+    for (const record of records) {
+      for (const section of historicalSections(record.renderedSections)) {
+        if (section.templateId !== template.id) continue;
+        const key = JSON.stringify(section.fields);
+        const createdAt = record.createdAt.toISOString();
+        const existing = candidates.get(key);
+        if (existing) {
+          existing.occurrences += 1;
+          if (createdAt > existing.latestSeenAt) existing.latestSeenAt = createdAt;
+          existing.sources.add(record.source);
+        } else {
+          candidates.set(key, {
+            templateVersion: section.templateVersion,
+            fields: section.fields,
+            occurrences: 1,
+            latestSeenAt: createdAt,
+            sources: new Set([record.source]),
+          });
+        }
+      }
+    }
+    return {
+      id: template.id,
+      name: template.name,
+      currentRawFieldIds: rawFieldIds(template.fields),
+      candidates: [...candidates.values()]
+        .sort((left, right) => right.latestSeenAt.localeCompare(left.latestSeenAt))
+        .map((candidate) => ({
+          ...candidate,
+          sources: [...candidate.sources].sort(),
+          fieldIds: candidate.fields.map(({ id }) => id),
+        })),
+    };
+  });
+
+  console.log(JSON.stringify({
+    mode: 'HISTORICAL_QUESTION_RECOVERY',
+    organizationId,
+    templates: results,
+  }, null, 2));
+}
+
+async function historicalCandidatesForTemplate(client: DbClient, templateId: string) {
+  const [renderSessions, snapshots] = await Promise.all([
+    client.cfIntakeRenderSession.findMany({
+      where: { organizationId },
+      select: { createdAt: true, renderedSections: true },
+    }),
+    client.cfIntakeSubmissionSnapshot.findMany({
+      where: { organizationId },
+      select: { createdAt: true, renderedSections: true },
+    }),
+  ]);
+  const candidates = new Map<string, {
+    fields: ReturnType<typeof normalizePublicFormFields>;
+    occurrences: number;
+    latestSeenAt: string;
+  }>();
+  for (const record of [...renderSessions, ...snapshots]) {
+    for (const section of historicalSections(record.renderedSections)) {
+      if (section.templateId !== templateId) continue;
+      const key = JSON.stringify(section.fields);
+      const createdAt = record.createdAt.toISOString();
+      const existing = candidates.get(key);
+      if (existing) {
+        existing.occurrences += 1;
+        if (createdAt > existing.latestSeenAt) existing.latestSeenAt = createdAt;
+      } else {
+        candidates.set(key, { fields: section.fields, occurrences: 1, latestSeenAt: createdAt });
+      }
+    }
+  }
+  return [...candidates.values()].sort((left, right) =>
+    right.latestSeenAt.localeCompare(left.latestSeenAt));
+}
+
+async function inspectHistoricalRestore(client: DbClient, templateId: string) {
+  const template = await client.cfFormTemplate.findFirst({
+    where: { id: templateId, organizationId },
+  });
+  if (!template) throw new Error(`Template ${templateId} was not found in this organization.`);
+  const currentIds = rawFieldIds(template.fields);
+  if (currentIds.length > 0) {
+    throw new Error(
+      `Template ${templateId} already has valid stored fields (${currentIds.join(', ')}); refusing to overwrite editor data.`,
+    );
+  }
+  const candidates = await historicalCandidatesForTemplate(client, templateId);
+  if (candidates.length !== 1) {
+    throw new Error(
+      `Template ${templateId} has ${candidates.length} distinct historical field sets; exactly one is required.`,
+    );
+  }
+  const candidate = candidates[0];
+  const fields = normalizedFields({ ...template, fields: candidate.fields as unknown as Prisma.JsonValue });
+  if (fields.length === 0) throw new Error(`Template ${templateId} has no recoverable fields.`);
+  return { template, candidate, fields };
+}
+
+async function restoreHistoricalFields(templateId: string) {
+  return prisma.$transaction(async (tx) => {
+    const inspection = await inspectHistoricalRestore(tx, templateId);
+    const updated = await tx.cfFormTemplate.update({
+      where: { id: inspection.template.id },
+      data: {
+        fields: inspection.fields as unknown as Prisma.InputJsonValue,
+        version: { increment: 1 },
+      },
+      select: { id: true, version: true, fields: true },
+    });
+    return {
+      id: updated.id,
+      version: updated.version,
+      fieldIds: rawFieldIds(updated.fields),
+    };
+  }, {
+    isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    maxWait: 5_000,
+    timeout: 30_000,
+  });
+}
 
 function argumentValue(name: string): string | undefined {
   const index = process.argv.indexOf(name);
@@ -220,9 +503,43 @@ async function main() {
     throw new Error('CLIENTFLOW_DATABASE_URL is required. Use the Neon ClientFlow connection string.');
   }
   if (!organizationId) throw new Error('--organization-id is required.');
-  if (apply && !requestedMapping) throw new Error('--apply requires one explicit --mapping.');
-  if (apply && confirmation !== 'CONSOLIDATE_CLIENTFLOW_FORMS') {
+  if ((inventory || recovery) && apply) {
+    throw new Error('--inventory and --recovery are read-only and cannot be combined with --apply.');
+  }
+  if (inventory && recovery) throw new Error('Use either --inventory or --recovery, not both.');
+  if (restoreTemplateId && (inventory || recovery || requestedMapping)) {
+    throw new Error('--restore-template cannot be combined with inventory, recovery, or mapping modes.');
+  }
+  if (apply && !requestedMapping && !restoreTemplateId) {
+    throw new Error('--apply requires one explicit --mapping or --restore-template.');
+  }
+  if (apply && requestedMapping && confirmation !== 'CONSOLIDATE_CLIENTFLOW_FORMS') {
     throw new Error('--apply requires --confirm CONSOLIDATE_CLIENTFLOW_FORMS.');
+  }
+  if (apply && restoreTemplateId && confirmation !== 'RESTORE_CLIENTFLOW_TEMPLATE_FIELDS') {
+    throw new Error('--apply restore requires --confirm RESTORE_CLIENTFLOW_TEMPLATE_FIELDS.');
+  }
+
+  if (inventory) {
+    await auditAllTemplates();
+    return;
+  }
+  if (recovery) {
+    await auditHistoricalRecovery();
+    return;
+  }
+  if (restoreTemplateId) {
+    const inspection = await inspectHistoricalRestore(prisma, restoreTemplateId);
+    console.log(JSON.stringify({
+      mode: apply ? 'APPLY_HISTORICAL_RESTORE' : 'DRY_RUN_HISTORICAL_RESTORE',
+      id: inspection.template.id,
+      name: inspection.template.name,
+      occurrences: inspection.candidate.occurrences,
+      latestSeenAt: inspection.candidate.latestSeenAt,
+      fieldIds: inspection.fields.map(({ id }) => id),
+      result: apply ? await restoreHistoricalFields(restoreTemplateId) : 'no changes',
+    }, null, 2));
+    return;
   }
 
   console.log(`ClientFlow form cleanup mode: ${apply ? 'APPLY' : 'DRY RUN'}`);

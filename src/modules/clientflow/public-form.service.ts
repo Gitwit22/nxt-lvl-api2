@@ -243,7 +243,7 @@ export class PublicFormService {
       this.prisma.cfProgram.findMany({
         where: { organizationId: assignment.organizationId, isActive: true },
         orderBy: { name: 'asc' },
-        select: { id: true, name: true },
+        select: { id: true, name: true, defaultFormTemplateId: true },
       }),
       this.prisma.cfFormTemplate.findMany({
         where: {
@@ -292,7 +292,10 @@ export class PublicFormService {
         const matchingSections = sectionTemplates.filter(
           (candidate) => candidate.programId === activeProgram.id && activeProgramIds.has(activeProgram.id),
         );
-        const section = matchingSections.find((candidate) => candidate.scope === 'program_section')
+        const section = matchingSections.find(
+          (candidate) => candidate.id === activeProgram.defaultFormTemplateId,
+        )
+          ?? matchingSections.find((candidate) => candidate.scope === 'program_section')
           ?? matchingSections[0];
         return {
           id: section

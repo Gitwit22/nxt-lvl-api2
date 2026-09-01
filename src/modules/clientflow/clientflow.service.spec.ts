@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { compare } from 'bcrypt';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 import { Prisma } from '../../generated/clientflow';
@@ -231,6 +231,64 @@ describe('ClientflowService.getProgramDetail', () => {
   });
 });
 
+describe('ClientflowService program form linkage', () => {
+  const request = {
+    headers: { 'x-org-id': 'org-1' },
+    partition: { appUrl: 'https://clientflow.test' },
+  } as unknown as PartitionRequest;
+
+  function setup(templateProgramId: string | null) {
+    const tx = {
+      cfProgram: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'program-1', organizationId: 'org-1' }),
+        update: jest.fn().mockImplementation(async ({ data }) => ({ id: 'program-1', ...data })),
+      },
+      cfFormTemplate: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'form-1',
+          organizationId: 'org-1',
+          programId: templateProgramId,
+          scope: 'legacy',
+          isActive: true,
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const prisma = {
+      $transaction: jest.fn().mockImplementation(async (callback) => callback(tx)),
+    };
+    const service = new ClientflowService(
+      request,
+      prisma as unknown as ClientflowPrismaService,
+      {} as PrismaService,
+      {} as NotificationsService,
+      {} as FilesService,
+    );
+    return { service, tx };
+  }
+
+  it('ties an unassigned default form back to the program', async () => {
+    const { service, tx } = setup(null);
+
+    const updated = await service.updateProgram('program-1', { defaultFormTemplateId: 'form-1' });
+
+    expect(updated).toMatchObject({ id: 'program-1', defaultFormTemplateId: 'form-1' });
+    expect(tx.cfFormTemplate.update).toHaveBeenCalledWith({
+      where: { id: 'form-1' },
+      data: { programId: 'program-1', scope: 'program_section' },
+    });
+  });
+
+  it('does not steal a form belonging to another program', async () => {
+    const { service, tx } = setup('program-2');
+
+    await expect(service.updateProgram('program-1', { defaultFormTemplateId: 'form-1' }))
+      .rejects.toBeInstanceOf(BadRequestException);
+    expect(tx.cfFormTemplate.update).not.toHaveBeenCalled();
+    expect(tx.cfProgram.update).not.toHaveBeenCalled();
+  });
+});
+
 describe('ClientflowService form template persistence', () => {
   const request = {
     headers: { 'x-org-id': 'org-1' },
@@ -238,7 +296,22 @@ describe('ClientflowService form template persistence', () => {
   } as unknown as PartitionRequest;
 
   it('returns the saved program questions unchanged after a reload', async () => {
-    const questions = [
+    const restoredQuestions = [
+      {
+        id: 'brandType',
+        label: 'What best describes your brand?',
+        type: 'select',
+        required: true,
+      },
+      {
+        id: 'contentType',
+        label: 'What type of content do you create?',
+        type: 'select',
+        required: true,
+      },
+    ];
+    const editedQuestions = [
+      ...restoredQuestions,
       {
         id: 'growth-goal',
         label: 'What is your growth goal?',
@@ -246,24 +319,17 @@ describe('ClientflowService form template persistence', () => {
         required: true,
         helpText: 'Describe the next twelve months.',
       },
-      {
-        id: 'business-stage',
-        label: 'What stage is your business?',
-        type: 'select',
-        required: false,
-        options: ['Idea', 'Operating', 'Growing'],
-      },
     ];
     let persistedTemplate = {
-      id: 'form-inspired-detroit',
+      id: 'form-creator',
       organizationId: 'org-1',
-      programId: 'prog-inspired-detroit',
-      scope: 'legacy',
+      programId: 'prog-creator',
+      scope: 'program_section',
       version: 1,
       sortOrder: 0,
-      name: 'Inspired Detroit Initiative Member Profile Form',
+      name: 'Creator & Brand Digital Growth Intake',
       description: '',
-      fields: [] as unknown[],
+      fields: restoredQuestions as unknown[],
       emailTemplate: 'default',
       internalNotes: null,
       dueInDays: 7,
@@ -289,15 +355,15 @@ describe('ClientflowService form template persistence', () => {
       {} as FilesService,
     );
 
-    const updated = await service.updateFormTemplate(persistedTemplate.id, { fields: questions });
+    const updated = await service.updateFormTemplate(persistedTemplate.id, { fields: editedQuestions });
     const [reloaded] = await service.listFormTemplates();
 
-    expect(updated.fields).toEqual(questions);
+    expect(updated.fields).toEqual(editedQuestions);
     expect(updated.scope).toBe('program_section');
-    expect(reloaded.fields).toEqual(questions);
+    expect(reloaded.fields).toEqual(editedQuestions);
     expect(reloaded.scope).toBe('program_section');
     expect(prisma.cfFormTemplate.update).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ fields: questions }),
+      data: expect.objectContaining({ fields: editedQuestions }),
     }));
   });
 });

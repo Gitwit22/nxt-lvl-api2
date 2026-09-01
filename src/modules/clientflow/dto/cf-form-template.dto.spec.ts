@@ -2,7 +2,20 @@ import { ValidationPipe } from '@nestjs/common';
 import { CreateCfFormTemplateDto, UpdateCfFormTemplateDto } from './cf-form-template.dto';
 
 const fields = [
-  { id: 'f', label: 'f', type: 'text', required: false },
+  {
+    id: 'brandType',
+    label: 'What best describes your brand?',
+    type: 'select',
+    required: true,
+    options: ['Creator', 'Product brand', 'Service brand'],
+  },
+  {
+    id: 'contentType',
+    label: 'What type of content do you create?',
+    type: 'select',
+    required: true,
+    options: ['Video', 'Audio', 'Written'],
+  },
 ];
 
 function transform<T extends { fields?: unknown[] }>(
@@ -27,7 +40,7 @@ describe('form template DTO field transformation', () => {
       ...(metatype === CreateCfFormTemplateDto
         ? { name: 'Inspired Detroit' }
         : {}),
-      programId: 'prog-inspired-detroit',
+      programId: 'prog-creator',
       scope: 'program_section',
       fields,
     });

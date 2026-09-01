@@ -304,7 +304,11 @@ describe('PublicFormService.getPublicForm', () => {
     version: 1,
     fields: [],
   };
-  const program = { id: 'program-1', name: 'Inspired Detroit Initiative' };
+  const program = {
+    id: 'program-1',
+    name: 'Inspired Detroit Initiative',
+    defaultFormTemplateId: 'program-template',
+  };
 
   function setup(sectionTemplates: Record<string, unknown>[]) {
     const prisma = {
@@ -384,6 +388,36 @@ describe('PublicFormService.getPublicForm', () => {
     expect(result.intakeConfiguration.sections[1]).toMatchObject({
       templateId: 'program-template',
       fields: [expect.objectContaining({ label: 'Current question' })],
+    });
+  });
+
+  it('uses the form configured on the program when multiple active sections exist', async () => {
+    const { service } = setup([
+      {
+        id: 'other-template',
+        name: 'Other Active Form',
+        description: '',
+        scope: 'program_section',
+        programId: program.id,
+        version: 1,
+        fields: [{ id: 'other', label: 'Other question', type: 'text' }],
+      },
+      {
+        id: 'program-template',
+        name: 'Configured Program Form',
+        description: '',
+        scope: 'program_section',
+        programId: program.id,
+        version: 2,
+        fields: [{ id: 'configured', label: 'Configured question', type: 'text' }],
+      },
+    ]);
+
+    const result = await service.getPublicForm('secure-token');
+
+    expect(result.intakeConfiguration.sections[1]).toMatchObject({
+      templateId: 'program-template',
+      fields: [expect.objectContaining({ label: 'Configured question' })],
     });
   });
 });
