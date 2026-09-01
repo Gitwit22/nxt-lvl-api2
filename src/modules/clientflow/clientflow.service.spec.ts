@@ -310,6 +310,16 @@ describe('ClientflowService form template persistence', () => {
         required: true,
       },
     ];
+    const submittedQuestions = [
+      ...restoredQuestions,
+      {
+        id: '  growth-goal  ',
+        label: '  What is your growth goal?  ',
+        type: 'textarea',
+        required: true,
+        helpText: 'Describe the next twelve months.',
+      },
+    ];
     const editedQuestions = [
       ...restoredQuestions,
       {
@@ -358,7 +368,9 @@ describe('ClientflowService form template persistence', () => {
       {} as FilesService,
     );
 
-    const updated = await service.updateFormTemplate(persistedTemplate.id, { fields: editedQuestions });
+    const updated = await service.updateFormTemplate(persistedTemplate.id, {
+      fields: submittedQuestions,
+    });
     const [reloaded] = await service.listFormTemplates();
 
     expect(updated.fields).toEqual(editedQuestions);
@@ -369,6 +381,13 @@ describe('ClientflowService form template persistence', () => {
     expect(prisma.cfFormTemplate.update).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ fields: editedQuestions, version: { increment: 1 } }),
     }));
+
+    await expect(service.updateFormTemplate(persistedTemplate.id, {
+      fields: [
+        { id: 'growth-goal', label: 'Growth goal' },
+        { id: ' growth-goal ', label: 'Updated growth goal' },
+      ],
+    })).rejects.toThrow('Duplicate form field ID: growth-goal.');
   });
 });
 

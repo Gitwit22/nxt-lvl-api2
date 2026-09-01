@@ -67,7 +67,7 @@ function validateTemplateFields(
   scope: string,
   programId: string | null,
   rawFields: unknown[],
-): void {
+): MappableFormField[] {
   const fields = rawFields.filter((field): field is MappableFormField =>
     Boolean(field)
       && typeof field === 'object'
@@ -77,19 +77,24 @@ function validateTemplateFields(
   if (fields.length !== rawFields.length) {
     throw new BadRequestException('Every form field requires an ID and label.');
   }
-  const blankField = fields.find((field) => !field.id.trim() || !field.label.trim());
+  const normalizedFields = fields.map((field) => ({
+    ...field,
+    id: field.id.trim(),
+    label: field.label.trim(),
+  }));
+  const blankField = normalizedFields.find((field) => !field.id || !field.label);
   if (blankField) {
     throw new BadRequestException('Every form field requires a non-empty ID and label.');
   }
 
-  const duplicateId = fields.find((field, index) =>
-    fields.findIndex((candidate) => candidate.id === field.id) !== index,
+  const duplicateId = normalizedFields.find((field, index) =>
+    normalizedFields.findIndex((candidate) => candidate.id === field.id) !== index,
   );
   if (duplicateId) throw new BadRequestException(`Duplicate form field ID: ${duplicateId.id}.`);
 
   const isProgramSection = scope === 'program_section' || (scope === 'legacy' && programId !== null);
   if (isProgramSection) {
-    const repeated = fields.find((field) => canonicalFieldKey(field) !== null);
+    const repeated = normalizedFields.find((field) => canonicalFieldKey(field) !== null);
     if (repeated) {
       throw new BadRequestException(
         `${repeated.label} is shared intake information and belongs in the Master Intake form.`,
@@ -99,7 +104,7 @@ function validateTemplateFields(
 
   if (scope === 'master_core') {
     const seen = new Set<string>();
-    for (const field of fields) {
+    for (const field of normalizedFields) {
       const canonical = canonicalFieldKey(field);
       if (!canonical) continue;
       if (seen.has(canonical)) {
@@ -108,6 +113,7 @@ function validateTemplateFields(
       seen.add(canonical);
     }
   }
+  return normalizedFields;
 }
 
 type DetailField = { id: string; label: string; type?: string };
@@ -593,7 +599,11 @@ export class ClientflowService {
 
   async createFormTemplate(dto: CreateCfFormTemplateDto) {
     const orgId = await this.getOrgId();
-    validateTemplateFields(dto.scope ?? 'legacy', dto.programId ?? null, dto.fields ?? []);
+    const fields = validateTemplateFields(
+      dto.scope ?? 'legacy',
+      dto.programId ?? null,
+      dto.fields ?? [],
+    );
     const created = await this.prisma.cfFormTemplate.create({
       data: {
         ...(dto.id && { id: dto.id }),
@@ -604,7 +614,7 @@ export class ClientflowService {
         sortOrder: dto.sortOrder ?? 0,
         name: dto.name,
         description: dto.description ?? '',
-        fields: (dto.fields ?? []) as Prisma.InputJsonValue,
+        fields: fields as unknown as Prisma.InputJsonValue,
         emailTemplate: dto.emailTemplate ?? 'default',
         internalNotes: dto.internalNotes ?? null,
         dueInDays: dto.dueInDays ?? 7,
@@ -619,7 +629,7 @@ export class ClientflowService {
     const existing = await this.prisma.cfFormTemplate.findFirst({ where: { id, organizationId: orgId } });
     if (!existing) throw new NotFoundException('Form template not found.');
 
-    validateTemplateFields(
+    const fields = validateTemplateFields(
       dto.scope ?? existing.scope,
       dto.programId !== undefined ? dto.programId : existing.programId,
       dto.fields ?? (Array.isArray(existing.fields) ? existing.fields : []),
@@ -637,7 +647,9 @@ export class ClientflowService {
         ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.description !== undefined && { description: dto.description }),
-        ...(dto.fields !== undefined && { fields: dto.fields as Prisma.InputJsonValue }),
+        ...(dto.fields !== undefined && {
+          fields: fields as unknown as Prisma.InputJsonValue,
+        }),
         ...(dto.emailTemplate !== undefined && { emailTemplate: dto.emailTemplate }),
         ...(dto.internalNotes !== undefined && { internalNotes: dto.internalNotes }),
         ...(dto.dueInDays !== undefined && { dueInDays: dto.dueInDays }),

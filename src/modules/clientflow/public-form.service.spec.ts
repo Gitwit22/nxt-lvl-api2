@@ -49,6 +49,12 @@ describe('PublicFormService.submitPublicForm', () => {
         { id: 'start', label: 'Desired start date', type: 'date', required: false },
         { id: 'contact', label: 'Preferred contact method', type: 'select', required: false },
         { id: 'heard', label: 'How did you hear about us?', type: 'text', required: false },
+        {
+          id: 'referralDetail',
+          label: 'Who referred you?',
+          type: 'text',
+          required: false,
+        },
       ],
     },
     {
@@ -135,6 +141,7 @@ describe('PublicFormService.submitPublicForm', () => {
       start: '2026-10-15',
       contact: 'Cell number',
       heard: 'Community event',
+      referralDetail: 'Morgan Smith',
     },
     programResponses: {
       'program-1': {
@@ -198,6 +205,25 @@ describe('PublicFormService.submitPublicForm', () => {
         },
       }],
     });
+    expect(tx.cfIntakeSubmission.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        responsePayload: dto.coreResponses,
+      }),
+    });
+    expect(tx.cfFormAssignment.update).toHaveBeenCalledWith({
+      where: { id: 'assignment-1' },
+      data: expect.objectContaining({
+        responses: dto.coreResponses,
+      }),
+    });
+    expect(tx.cfIntakeSubmissionSnapshot.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        renderedSections,
+      }),
+    });
+    const clientUpdate = tx.cfClient.update.mock.calls[0][0];
+    expect(clientUpdate.data).not.toHaveProperty('referralDetail');
+    expect(clientUpdate.data.intake).not.toHaveProperty('referralDetail');
   });
 
   it('does not replace a start date already established on an existing enrollment', async () => {

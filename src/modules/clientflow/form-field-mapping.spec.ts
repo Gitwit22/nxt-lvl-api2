@@ -99,13 +99,18 @@ describe('ensureCoreIntakeFields', () => {
       .toEqual(CORE_INTAKE_FIELDS.map((field) => canonicalFieldKey(field)));
   });
 
-  it('does not restore miscellaneous legacy fields into the core section', () => {
+  it('keeps custom questions after the baseline core fields', () => {
     const fields = ensureCoreIntakeFields([
       { id: 'revenueGoal', label: 'Revenue goal', type: 'number', required: false },
     ]);
 
-    expect(fields.some((field) => field.id === 'revenueGoal')).toBe(false);
-    expect(fields).toEqual(CORE_INTAKE_FIELDS);
+    expect(fields.slice(0, CORE_INTAKE_FIELDS.length)).toEqual(CORE_INTAKE_FIELDS);
+    expect(fields[fields.length - 1]).toEqual({
+      id: 'revenueGoal',
+      label: 'Revenue goal',
+      type: 'number',
+      required: false,
+    });
   });
 });
 
