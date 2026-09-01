@@ -341,7 +341,10 @@ describe('ClientflowService form template persistence', () => {
       cfFormTemplate: {
         findFirst: jest.fn().mockImplementation(async () => persistedTemplate),
         update: jest.fn().mockImplementation(async ({ data }) => {
-          persistedTemplate = { ...persistedTemplate, ...data };
+          const version = typeof data.version === 'object' && data.version.increment
+            ? persistedTemplate.version + data.version.increment
+            : data.version ?? persistedTemplate.version;
+          persistedTemplate = { ...persistedTemplate, ...data, version };
           return persistedTemplate;
         }),
         findMany: jest.fn().mockImplementation(async () => [persistedTemplate]),
@@ -359,12 +362,70 @@ describe('ClientflowService form template persistence', () => {
     const [reloaded] = await service.listFormTemplates();
 
     expect(updated.fields).toEqual(editedQuestions);
+    expect(updated.version).toBe(2);
     expect(updated.scope).toBe('program_section');
     expect(reloaded.fields).toEqual(editedQuestions);
     expect(reloaded.scope).toBe('program_section');
     expect(prisma.cfFormTemplate.update).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ fields: editedQuestions }),
+      data: expect.objectContaining({ fields: editedQuestions, version: { increment: 1 } }),
     }));
+  });
+});
+
+describe('ClientflowService form template deletion', () => {
+  const request = {
+    headers: { 'x-org-id': 'org-1' },
+    partition: { appUrl: 'https://clientflow.test' },
+  } as unknown as PartitionRequest;
+
+  function setup(embeddedReferences = 0) {
+    const renderedSections = embeddedReferences
+      ? [{ templateId: 'form-1', fields: [] }]
+      : [];
+    const tx = {
+      cfFormTemplate: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'form-1', organizationId: 'org-1' }),
+        delete: jest.fn().mockResolvedValue({ id: 'form-1' }),
+      },
+      cfProgram: { count: jest.fn().mockResolvedValue(0) },
+      cfFormAssignment: { count: jest.fn().mockResolvedValue(0) },
+      cfIntakeRenderSession: {
+        count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue(
+          Array.from({ length: embeddedReferences }, () => ({ renderedSections })),
+        ),
+      },
+      cfIntakeSubmissionSnapshot: {
+        count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    };
+    const prisma = {
+      $transaction: jest.fn().mockImplementation(async (callback) => callback(tx)),
+    };
+    const service = new ClientflowService(
+      request,
+      prisma as unknown as ClientflowPrismaService,
+      {} as PrismaService,
+      {} as NotificationsService,
+      {} as FilesService,
+    );
+    return { service, tx };
+  }
+
+  it('deletes an unreferenced form template', async () => {
+    const { service, tx } = setup();
+
+    await expect(service.deleteFormTemplate('form-1')).resolves.toEqual({ id: 'form-1' });
+    expect(tx.cfFormTemplate.delete).toHaveBeenCalledWith({ where: { id: 'form-1' } });
+  });
+
+  it('blocks deletion when rendered intake history references the template', async () => {
+    const { service, tx } = setup(1);
+
+    await expect(service.deleteFormTemplate('form-1'))
+      .rejects.toThrow('1 renderSessions');
+    expect(tx.cfFormTemplate.delete).not.toHaveBeenCalled();
   });
 });
 

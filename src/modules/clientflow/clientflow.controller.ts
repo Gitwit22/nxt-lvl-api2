@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, Param, Patch, Post, Query, UseGuards, Header,
+  Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards, Header,
 } from '@nestjs/common';
 import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
 import { OrgAdminGuard } from '../../common/guards/org-admin.guard';
@@ -109,6 +109,10 @@ export class ClientflowController {
   @Header('Pragma', 'no-cache')
   @Header('Expires', '0')
   updateFormTemplate(@Param('id') id: string, @Body() dto: UpdateCfFormTemplateDto) { return this.svc.updateFormTemplate(id, dto); }
+
+  @Delete('form-templates/:id')
+  @UseGuards(OrgAdminGuard)
+  deleteFormTemplate(@Param('id') id: string) { return this.svc.deleteFormTemplate(id); }
 
   // ─── Form Assignments ────────────────────────────────────────────────────────
 
