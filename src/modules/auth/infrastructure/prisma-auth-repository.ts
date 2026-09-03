@@ -18,6 +18,7 @@ type AdminRow = {
   passwordHash: string;
   firstName: string | null;
   lastName: string | null;
+  jobTitle: string | null;
   role: string;
   isActive: boolean;
   lastLoginAt: Date | null;
