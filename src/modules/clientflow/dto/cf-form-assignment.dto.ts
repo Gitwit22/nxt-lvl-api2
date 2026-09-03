@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsBoolean, IsNumber } from 'class-validator';
+import { IsString, IsOptional, IsBoolean } from 'class-validator';
 
 export class CreateCfFormAssignmentDto {
   @IsString() clientId!: string;
@@ -11,7 +11,6 @@ export class CreateCfFormAssignmentDto {
   @IsOptional() @IsString() recipientPhone?: string | null;
   @IsOptional() @IsString() status?: string;
   @IsOptional() @IsString() dueDate?: string;
-  @IsOptional() @IsString() createdByUserId?: string;
   @IsOptional() @IsBoolean() isDemo?: boolean;
   @IsOptional() @IsString() sentAt?: string;
 }

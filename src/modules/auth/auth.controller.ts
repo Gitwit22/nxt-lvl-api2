@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, Query, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
 import { AuthService } from './auth.service';
@@ -8,6 +8,8 @@ import {
   setAuthCookies,
 } from './auth-cookies';
 import { LoginDto } from './dto/login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -41,6 +43,26 @@ export class AuthController {
   getMe(@Req() req: Request) {
     const adminId = req.headers['x-admin-id'] as string;
     return this.authService.getMe(adminId);
+  }
+
+  @Patch('me')
+  @UseGuards(AdminJwtGuard)
+  updateMe(@Req() req: Request, @Body() dto: UpdateProfileDto) {
+    const adminId = req.headers['x-admin-id'] as string;
+    return this.authService.updateMe(adminId, dto);
+  }
+
+  @Post('change-password')
+  @UseGuards(AdminJwtGuard)
+  async changePassword(
+    @Req() req: Request,
+    @Body() dto: ChangePasswordDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const adminId = req.headers['x-admin-id'] as string;
+    const result = await this.authService.changePassword(adminId, dto);
+    clearAuthCookies(response);
+    return result;
   }
 
   @Get('session')

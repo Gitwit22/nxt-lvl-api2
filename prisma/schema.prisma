@@ -303,6 +303,7 @@ model AdminUser {
   passwordHash   String
   firstName      String?
   lastName       String?
+  jobTitle       String?
   role           AdminRole @default(reviewer)
   isActive       Boolean   @default(true)
   lastLoginAt    DateTime?

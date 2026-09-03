@@ -31,7 +31,6 @@ export class OrganizationsController {
   }
 
   @Get(':orgId/members')
-  @UseGuards(OrgAdminGuard)
   listMembers(@Param('orgId') orgId: string) {
     return this.organizationsService.listMembers(orgId);
   }

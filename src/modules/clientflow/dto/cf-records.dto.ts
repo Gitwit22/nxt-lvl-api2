@@ -39,6 +39,4 @@ export class CreateCfActivityDto {
   @IsOptional() @IsString() enrollmentId?: string;
   @IsString() action!: string;
   @IsString() description!: string;
-  @IsString() user!: string;
-  @IsOptional() @IsString() timestamp?: string;
 }

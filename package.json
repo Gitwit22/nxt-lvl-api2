@@ -31,6 +31,8 @@
     "clientflow:forms:recovery": "ts-node scripts/cleanup-clientflow-form-templates.ts --recovery",
     "clientflow:forms:restore": "ts-node scripts/cleanup-clientflow-form-templates.ts",
     "clientflow:forms:cleanup:apply": "ts-node scripts/cleanup-clientflow-form-templates.ts --apply",
+    "clientflow:identity:reassign-alicia": "ts-node scripts/reassign-clientflow-alicia.ts",
+    "clientflow:identity:reassign-alicia:apply": "ts-node scripts/reassign-clientflow-alicia.ts --apply",
     "prisma:seed": "node prisma/seed.js"
   },
   "keywords": [],

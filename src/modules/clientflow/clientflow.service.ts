@@ -212,6 +212,22 @@ export class ClientflowService {
     return admin.organizationId;
   }
 
+  private async getAuthenticatedActor(orgId: string) {
+    const adminId = this.request.headers['x-admin-id'] as string | undefined;
+    if (!adminId) throw new NotFoundException('Admin context missing.');
+
+    const admin = await this.primaryPrisma.adminUser.findFirst({
+      where: { id: adminId, organizationId: orgId, isActive: true },
+      select: { id: true, email: true, firstName: true, lastName: true },
+    });
+    if (!admin) throw new NotFoundException('Active admin not found.');
+
+    return {
+      id: admin.id,
+      displayName: [admin.firstName, admin.lastName].filter(Boolean).join(' ') || admin.email,
+    };
+  }
+
   private async verifyClientBelongsToOrg(clientId: string, orgId: string): Promise<void> {
     const client = await this.prisma.cfClient.findFirst({ where: { id: clientId, organizationId: orgId } });
     if (!client) throw new NotFoundException('Client not found.');
@@ -715,6 +731,7 @@ export class ClientflowService {
 
   async createFormAssignment(dto: CreateCfFormAssignmentDto) {
     const orgId = await this.getOrgId();
+    const actor = await this.getAuthenticatedActor(orgId);
     await this.verifyClientBelongsToOrg(dto.clientId, orgId);
     const form = await this.prisma.cfFormTemplate.findFirst({
       where: { id: dto.formId, organizationId: orgId },
@@ -744,7 +761,7 @@ export class ClientflowService {
         dueDate: dto.dueDate,
         secureLink,
         secureLinkToken: token,
-        createdByUserId: dto.createdByUserId,
+        createdByUserId: actor.id,
         isDemo: dto.isDemo ?? false,
         sentAt: null,
       },
@@ -1255,6 +1272,7 @@ export class ClientflowService {
 
   async createActivity(dto: CreateCfActivityDto) {
     const orgId = await this.getOrgId();
+    const actor = await this.getAuthenticatedActor(orgId);
     await this.verifyClientBelongsToOrg(dto.clientId, orgId);
     if (dto.enrollmentId) {
       await this.verifyEnrollmentBelongsToClient(dto.enrollmentId, dto.clientId, orgId);
@@ -1264,10 +1282,11 @@ export class ClientflowService {
         organizationId: orgId,
         clientId: dto.clientId,
         enrollmentId: dto.enrollmentId,
+        actorUserId: actor.id,
         action: dto.action,
         description: dto.description,
-        user: dto.user,
-        timestamp: dto.timestamp ? new Date(dto.timestamp) : new Date(),
+        user: actor.displayName,
+        timestamp: new Date(),
       },
     });
   }

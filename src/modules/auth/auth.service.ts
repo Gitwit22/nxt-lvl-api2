@@ -11,6 +11,8 @@ import { BcryptPasswordHasher } from './infrastructure/bcrypt-password-hasher';
 import { JwtTokenService } from './infrastructure/jwt-token-service';
 import { ConsoleAuditLogger } from './infrastructure/console-audit-logger';
 import { LoginDto } from './dto/login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -68,6 +70,9 @@ export class AuthService {
       admin: {
         id: result.user.id,
         email: result.user.email,
+        firstName: admin?.firstName,
+        lastName: admin?.lastName,
+        jobTitle: admin?.jobTitle,
         role: result.user.roles[0] ?? 'reviewer',
         organizationId: admin?.organizationId,
       },
@@ -137,6 +142,9 @@ export class AuthService {
       admin: {
         id: adminUser.id,
         email: adminUser.email,
+        firstName: adminUser.firstName,
+        lastName: adminUser.lastName,
+        jobTitle: adminUser.jobTitle,
         role: adminUser.role,
         organizationId: adminUser.organizationId,
       },
@@ -146,10 +154,62 @@ export class AuthService {
   async getMe(adminId: string) {
     const admin = await this.prisma.adminUser.findUnique({
       where: { id: adminId },
-      select: { id: true, email: true, firstName: true, lastName: true, role: true, organizationId: true, isActive: true },
+      select: { id: true, email: true, firstName: true, lastName: true, jobTitle: true, role: true, organizationId: true, isActive: true },
     });
     if (!admin) throw new NotFoundException('User not found.');
     return admin;
+  }
+
+  async updateMe(adminId: string, dto: UpdateProfileDto) {
+    const normalize = (value: string | undefined) =>
+      value === undefined ? undefined : value.trim() || null;
+
+    return this.prisma.adminUser.update({
+      where: { id: adminId },
+      data: {
+        firstName: normalize(dto.firstName),
+        lastName: normalize(dto.lastName),
+        jobTitle: normalize(dto.jobTitle),
+      },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        jobTitle: true,
+        role: true,
+        organizationId: true,
+        isActive: true,
+      },
+    });
+  }
+
+  async changePassword(adminId: string, dto: ChangePasswordDto) {
+    const admin = await this.prisma.adminUser.findUnique({
+      where: { id: adminId },
+      select: { passwordHash: true },
+    });
+    if (!admin) throw new NotFoundException('User not found.');
+
+    const currentPasswordValid = await this.passwordHasher.compare(
+      dto.currentPassword,
+      admin.passwordHash,
+    );
+    if (!currentPasswordValid) throw new UnauthorizedException('Current password is incorrect.');
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException('New password must be different from the current password.');
+    }
+
+    const passwordHash = await this.passwordHasher.hash(dto.newPassword);
+    await this.prisma.$transaction([
+      this.prisma.adminUser.update({ where: { id: adminId }, data: { passwordHash } }),
+      this.prisma.authSession.updateMany({
+        where: { adminUserId: adminId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+
+    return { message: 'Password changed. Sign in again with your new password.' };
   }
 
   async logout(refreshToken?: string) {

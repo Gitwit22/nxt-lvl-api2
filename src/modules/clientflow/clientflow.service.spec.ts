@@ -535,6 +535,71 @@ describe('ClientflowService notifications', () => {
   });
 });
 
+describe('ClientflowService actor attribution', () => {
+  const request = {
+    headers: { 'x-org-id': 'org-1', 'x-admin-id': 'admin-1' },
+    partition: { appUrl: 'https://clientflow.test' },
+  } as unknown as PartitionRequest;
+
+  function setup() {
+    const prisma = {
+      cfClient: { findFirst: jest.fn().mockResolvedValue({ id: 'client-1' }) },
+      cfFormTemplate: { findFirst: jest.fn().mockResolvedValue({ id: 'form-1', programId: null }) },
+      cfFormAssignment: { create: jest.fn().mockImplementation(({ data }) => data) },
+      cfActivityLog: { create: jest.fn().mockImplementation(({ data }) => data) },
+    };
+    const primaryPrisma = {
+      adminUser: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'admin-1',
+          organizationId: 'org-1',
+          email: 'admin@example.com',
+          firstName: 'Jordan',
+          lastName: 'Lee',
+          isActive: true,
+        }),
+      },
+    };
+    const service = new ClientflowService(
+      request,
+      prisma as unknown as ClientflowPrismaService,
+      primaryPrisma as unknown as PrismaService,
+      {} as NotificationsService,
+      {} as FilesService,
+    );
+    return { service, prisma, primaryPrisma };
+  }
+
+  it('attributes new activities to the authenticated admin', async () => {
+    const { service, prisma } = setup();
+
+    await service.createActivity({
+      clientId: 'client-1',
+      action: 'Client updated',
+      description: 'Contact details changed.',
+    });
+
+    expect(prisma.cfActivityLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        organizationId: 'org-1',
+        actorUserId: 'admin-1',
+        user: 'Jordan Lee',
+        timestamp: expect.any(Date),
+      }),
+    });
+  });
+
+  it('uses the authenticated admin ID as the form creator', async () => {
+    const { service, prisma } = setup();
+
+    await service.createFormAssignment({ clientId: 'client-1', formId: 'form-1' });
+
+    expect(prisma.cfFormAssignment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ createdByUserId: 'admin-1' }),
+    });
+  });
+});
+
 describe('ClientflowService.removeDemo', () => {
   it('completes the live-mode transition when the partition has no AuditLog table', async () => {
     const request = {
