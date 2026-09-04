@@ -18,13 +18,25 @@ type AdminRow = {
   passwordHash: string;
   firstName: string | null;
   lastName: string | null;
-  jobTitle: string | null;
   role: string;
   isActive: boolean;
   lastLoginAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
+
+const authAdminSelect = {
+  id: true,
+  email: true,
+  passwordHash: true,
+  firstName: true,
+  lastName: true,
+  role: true,
+  isActive: true,
+  lastLoginAt: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 function toAuthUser(admin: AdminRow): AuthUser {
   return {
@@ -60,39 +72,54 @@ export class PrismaAuthRepository implements AuthRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async findUserById(id: string): Promise<AuthUser | undefined> {
-    const admin = await this.prisma.adminUser.findUnique({ where: { id } });
-    return admin ? toAuthUser(admin as AdminRow) : undefined;
+    const admin = await this.prisma.adminUser.findUnique({
+      where: { id },
+      select: authAdminSelect,
+    });
+    return admin ? toAuthUser(admin) : undefined;
   }
 
   async findUserByEmail(email: string): Promise<AuthUser | undefined> {
     const admin = await this.prisma.adminUser.findUnique({
       where: { email: email.toLowerCase() },
+      select: authAdminSelect,
     });
-    return admin ? toAuthUser(admin as AdminRow) : undefined;
+    return admin ? toAuthUser(admin) : undefined;
   }
 
   async findAccountByEmail(email: string): Promise<AuthAccount | undefined> {
     const admin = await this.prisma.adminUser.findUnique({
       where: { email: email.toLowerCase() },
+      select: authAdminSelect,
     });
-    return admin ? toAuthAccount(admin as AdminRow) : undefined;
+    return admin ? toAuthAccount(admin) : undefined;
   }
 
   async findAccountByUserId(userId: string): Promise<AuthAccount | undefined> {
-    const admin = await this.prisma.adminUser.findUnique({ where: { id: userId } });
-    return admin ? toAuthAccount(admin as AdminRow) : undefined;
+    const admin = await this.prisma.adminUser.findUnique({
+      where: { id: userId },
+      select: authAdminSelect,
+    });
+    return admin ? toAuthAccount(admin) : undefined;
   }
 
   async updateAccount(id: string, patch: Partial<AuthAccount>): Promise<AuthAccount> {
     const data: Record<string, unknown> = { updatedAt: patch.updatedAt ?? new Date() };
     if (patch.lastLoginAt !== undefined) data['lastLoginAt'] = patch.lastLoginAt;
-    const admin = await this.prisma.adminUser.update({ where: { id }, data });
-    return toAuthAccount(admin as AdminRow);
+    const admin = await this.prisma.adminUser.update({
+      where: { id },
+      data,
+      select: authAdminSelect,
+    });
+    return toAuthAccount(admin);
   }
 
   async updateUser(id: string, _patch: Partial<AuthUser>): Promise<AuthUser> {
-    const admin = await this.prisma.adminUser.findUniqueOrThrow({ where: { id } });
-    return toAuthUser(admin as AdminRow);
+    const admin = await this.prisma.adminUser.findUniqueOrThrow({
+      where: { id },
+      select: authAdminSelect,
+    });
+    return toAuthUser(admin);
   }
 
   // ── Session (stateless JWT — no server-side persistence) ──

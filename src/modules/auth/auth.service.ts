@@ -56,6 +56,11 @@ export class AuthService {
     // Fetch org context to embed in JWT
     const admin = await this.prisma.adminUser.findUnique({
       where: { id: result.user.id },
+      select: {
+        organizationId: true,
+        firstName: true,
+        lastName: true,
+      },
     });
 
     const session = await this.issueSessionToken(
@@ -72,7 +77,7 @@ export class AuthService {
         email: result.user.email,
         firstName: admin?.firstName,
         lastName: admin?.lastName,
-        jobTitle: admin?.jobTitle,
+        jobTitle: null,
         role: result.user.roles[0] ?? 'reviewer',
         organizationId: admin?.organizationId,
       },
