@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   Scope,
 } from '@nestjs/common';
@@ -20,6 +21,8 @@ import { UpdateOrgSettingsDto } from './dto/update-org-settings.dto';
 
 @Injectable({ scope: Scope.REQUEST })
 export class OrganizationsService {
+  private readonly logger = new Logger(OrganizationsService.name);
+
   constructor(
     @Inject(REQUEST) private readonly request: PartitionRequest,
     private readonly prisma: PrismaService,
@@ -109,7 +112,7 @@ export class OrganizationsService {
   }
 
   async listMembers(orgId: string) {
-    await this.verifyOrgAccess(orgId);
+    const requestingAdmin = await this.verifyOrgAccess(orgId);
     const organization = await this.prisma.organization.findUnique({
       where: { id: orgId },
       select: { principalAdminId: true },
@@ -129,19 +132,30 @@ export class OrganizationsService {
       },
       orderBy: { createdAt: 'asc' },
     });
-    return members.map((m) => ({
-      id: m.id,
-      email: m.email,
-      firstName: m.firstName,
-      lastName: m.lastName,
-      jobTitle: m.jobTitle,
-      role: m.role,
-      isActive: m.isActive,
-      createdAt: m.createdAt,
-      invitePending: m.invitation
-        ? m.invitation.acceptedAt === null && m.invitation.revokedAt === null
+
+    if (!members.some((member) => member.id === requestingAdmin.id)) {
+      this.logger.warn({
+        message: 'Member query omitted authenticated admin.',
+        adminId: requestingAdmin.id,
+        organizationId: orgId,
+      });
+      members.push({ ...requestingAdmin, invitation: null });
+      members.sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+    }
+
+    return members.map((member) => ({
+      id: member.id,
+      email: member.email,
+      firstName: member.firstName,
+      lastName: member.lastName,
+      jobTitle: member.jobTitle,
+      role: member.role,
+      isActive: member.isActive,
+      createdAt: member.createdAt,
+      invitePending: member.invitation
+        ? member.invitation.acceptedAt === null && member.invitation.revokedAt === null
         : false,
-      isPrincipal: m.id === organization?.principalAdminId,
+      isPrincipal: member.id === organization?.principalAdminId,
     }));
   }
 
