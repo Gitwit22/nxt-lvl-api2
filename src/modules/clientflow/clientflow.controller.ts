@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards, Header,
+  BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards, Header,
 } from '@nestjs/common';
 import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
 import { OrgAdminGuard } from '../../common/guards/org-admin.guard';
@@ -29,6 +29,36 @@ import {
 import { CreateCfEnrollmentDto, UpdateCfEnrollmentDto } from './dto/cf-enrollment.dto';
 import { EnrollmentService } from './enrollment.service';
 import { MonitoringService } from './monitoring.service';
+
+function parsePositiveInteger(value: string | undefined, name: string, fallback: number): number {
+  if (value === undefined) return fallback;
+  if (!/^\d+$/.test(value)) {
+    throw new BadRequestException(`${name} must be a positive integer.`);
+  }
+
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new BadRequestException(`${name} must be a positive integer.`);
+  }
+  return parsed;
+}
+
+function parseOffset(value: string | undefined): number {
+  if (value === undefined) return 0;
+  if (!/^\d+$/.test(value)) {
+    throw new BadRequestException('offset must be a non-negative integer.');
+  }
+
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new BadRequestException('offset must be a non-negative integer.');
+  }
+  return parsed;
+}
+
+function parsePage(limit?: string, offset?: string): [number, number] {
+  return [Math.min(parsePositiveInteger(limit, 'limit', 200), 500), parseOffset(offset)];
+}
 
 @Controller('admin/cf')
 @UseGuards(AdminJwtGuard)
@@ -170,10 +200,7 @@ export class ClientflowController {
 
   @Get('terms')
   listAllTerms(@Query('limit') limit?: string, @Query('offset') offset?: string) {
-    return this.svc.listAllTerms(
-      limit ? Math.min(parseInt(limit), 500) : 200,
-      offset ? parseInt(offset) : 0
-    );
+    return this.svc.listAllTerms(...parsePage(limit, offset));
   }
 
   @Get('monitoring')
@@ -183,34 +210,22 @@ export class ClientflowController {
 
   @Get('contracts')
   listAllContracts(@Query('limit') limit?: string, @Query('offset') offset?: string) {
-    return this.svc.listAllContracts(
-      limit ? Math.min(parseInt(limit), 500) : 200,
-      offset ? parseInt(offset) : 0
-    );
+    return this.svc.listAllContracts(...parsePage(limit, offset));
   }
 
   @Get('documents')
   listAllDocuments(@Query('limit') limit?: string, @Query('offset') offset?: string) {
-    return this.svc.listAllDocuments(
-      limit ? Math.min(parseInt(limit), 500) : 200,
-      offset ? parseInt(offset) : 0
-    );
+    return this.svc.listAllDocuments(...parsePage(limit, offset));
   }
 
   @Get('communications')
   listAllCommunications(@Query('limit') limit?: string, @Query('offset') offset?: string) {
-    return this.svc.listAllCommunications(
-      limit ? Math.min(parseInt(limit), 500) : 200,
-      offset ? parseInt(offset) : 0
-    );
+    return this.svc.listAllCommunications(...parsePage(limit, offset));
   }
 
   @Get('final-reports')
   listAllFinalReports(@Query('limit') limit?: string, @Query('offset') offset?: string) {
-    return this.svc.listAllFinalReports(
-      limit ? Math.min(parseInt(limit), 500) : 200,
-      offset ? parseInt(offset) : 0
-    );
+    return this.svc.listAllFinalReports(...parsePage(limit, offset));
   }
 
   // ─── Terms ──────────────────────────────────────────────────────────────────
