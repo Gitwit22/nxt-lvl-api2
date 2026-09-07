@@ -439,7 +439,7 @@ export class ClientflowService {
     const enrollmentIds = enrollments.map(({ id }) => id);
     const clientIds = [...new Set(enrollments.map(({ clientId }) => clientId))];
 
-    const [clients, intakeLinks, assignments, terms, contracts, monitoring] = await Promise.all([
+    const [clients, intakeLinks, assignments, terms, contracts, monitoring, statusHistory] = await Promise.all([
       this.prisma.cfClient.findMany({
         where: { organizationId: orgId, id: { in: clientIds } },
         select: {
@@ -492,6 +492,10 @@ export class ClientflowService {
         },
         orderBy: { nextReviewAt: 'asc' },
       }).catch(ignoreMissingMonitoringTable),
+      this.prisma.cfEnrollmentStatusHistory.findMany({
+        where: { organizationId: orgId, enrollmentId: { in: enrollmentIds } },
+        orderBy: { createdAt: 'asc' },
+      }),
     ]);
 
     const submissionIds = [...new Set(intakeLinks.map(({ intakeSubmissionId }) => intakeSubmissionId))];
@@ -585,6 +589,7 @@ export class ClientflowService {
         terms: terms.filter(matchesEnrollment),
         contracts: contracts.filter(matchesEnrollment),
         monitoring: monitoring.filter((record) => record.enrollmentId === enrollment.id),
+        statusHistory: statusHistory.filter((record) => record.enrollmentId === enrollment.id),
       }];
     });
 
@@ -1395,6 +1400,7 @@ export class ClientflowService {
     const orgId = await this.getOrgId();
     const adminId = this.request.headers['x-admin-id'] as string | undefined;
     if (!adminId) throw new UnauthorizedException('Admin context missing.');
+    const actor = await this.getAuthenticatedActor(orgId);
     const organization = await this.primaryPrisma.organization.findUnique({
       where: { id: orgId },
     }) as unknown as LiveOrganizationState | null;
@@ -1435,7 +1441,10 @@ export class ClientflowService {
             clientId: client.id,
             programId: program.id,
             status: 'interested',
-            assignedStaff: 'Demo Team',
+            assignedUserId: actor.id,
+            assignedStaff: actor.displayName,
+            lastModifiedByUserId: actor.id,
+            lastModifiedByDisplayName: actor.displayName,
             isDemo: true,
           },
         });
@@ -1445,7 +1454,8 @@ export class ClientflowService {
             organizationId: orgId,
             enrollmentId: enrollment.id,
             newStatus: 'interested',
-            changedByUserId: adminId,
+            changedByUserId: actor.id,
+            changedByDisplayName: actor.displayName,
             reason: 'Created by the server demo seed.',
           },
         });
@@ -1457,7 +1467,7 @@ export class ClientflowService {
           enrollmentId,
           action: 'demo_seeded',
           description: 'Server-persisted demo workflow created.',
-          user: this.request.headers['x-admin-email'] as string ?? 'Admin',
+          user: actor.displayName,
           isDemo: true,
         },
       });

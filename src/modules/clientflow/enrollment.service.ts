@@ -39,10 +39,14 @@ export class EnrollmentService {
 
   async create(dto: CreateCfEnrollmentDto) {
     const organizationId = await this.getOrganizationId();
+    const actor = await this.getActor(organizationId);
+    const assignee = dto.assignedUserId
+      ? await this.getActiveMember(dto.assignedUserId, organizationId)
+      : actor;
     const [client, program] = await Promise.all([
       this.prisma.cfClient.findFirst({
         where: { id: dto.clientId, organizationId },
-        select: { id: true, isDemo: true, assignedStaff: true, assignedUserId: true },
+        select: { id: true, isDemo: true },
       }),
       this.prisma.cfProgram.findFirst({
         where: { id: dto.programId, organizationId, isActive: true },
@@ -60,8 +64,10 @@ export class EnrollmentService {
             clientId: client.id,
             programId: program.id,
             status: dto.status ?? CfEnrollmentStatus.interested,
-            assignedUserId: dto.assignedUserId ?? client.assignedUserId,
-            assignedStaff: dto.assignedStaff ?? client.assignedStaff,
+            assignedUserId: assignee.id,
+            assignedStaff: assignee.displayName,
+            lastModifiedByUserId: actor.id,
+            lastModifiedByDisplayName: actor.displayName,
             startDate: dto.startDate ? new Date(dto.startDate) : null,
             isDemo: client.isDemo,
           },
@@ -71,7 +77,8 @@ export class EnrollmentService {
             organizationId,
             enrollmentId: enrollment.id,
             newStatus: enrollment.status,
-            changedByUserId: this.actorId,
+            changedByUserId: actor.id,
+            changedByDisplayName: actor.displayName,
             reason: 'Program enrollment created.',
           },
         });
@@ -90,6 +97,10 @@ export class EnrollmentService {
 
   async update(id: string, dto: UpdateCfEnrollmentDto) {
     const organizationId = await this.getOrganizationId();
+    const actor = await this.getActor(organizationId);
+    const assignee = dto.assignedUserId
+      ? await this.getActiveMember(dto.assignedUserId, organizationId)
+      : null;
     const existing = await this.prisma.cfProgramEnrollment.findFirst({
       where: { id, organizationId },
     });
@@ -100,8 +111,12 @@ export class EnrollmentService {
         where: { id },
         data: {
           ...(dto.status !== undefined && { status: dto.status }),
-          ...(dto.assignedUserId !== undefined && { assignedUserId: dto.assignedUserId }),
-          ...(dto.assignedStaff !== undefined && { assignedStaff: dto.assignedStaff }),
+          ...(assignee && {
+            assignedUserId: assignee.id,
+            assignedStaff: assignee.displayName,
+          }),
+          lastModifiedByUserId: actor.id,
+          lastModifiedByDisplayName: actor.displayName,
           ...(dto.progressPercentage !== undefined && {
             progressPercentage: dto.progressPercentage,
           }),
@@ -126,7 +141,8 @@ export class EnrollmentService {
             enrollmentId: id,
             previousStatus: existing.status,
             newStatus: dto.status,
-            changedByUserId: this.actorId,
+            changedByUserId: actor.id,
+            changedByDisplayName: actor.displayName,
             reason: dto.statusReason,
           },
         });
@@ -146,6 +162,24 @@ export class EnrollmentService {
 
   private get actorId(): string | undefined {
     return this.request.headers['x-admin-id'] as string | undefined;
+  }
+
+  private async getActor(organizationId: string) {
+    const actorId = this.actorId;
+    if (!actorId) throw new NotFoundException('Admin context missing.');
+    return this.getActiveMember(actorId, organizationId);
+  }
+
+  private async getActiveMember(id: string, organizationId: string) {
+    const member = await this.primaryPrisma.adminUser.findFirst({
+      where: { id, organizationId, isActive: true },
+      select: { id: true, email: true, firstName: true, lastName: true },
+    });
+    if (!member) throw new NotFoundException('Active organization member not found.');
+    return {
+      id: member.id,
+      displayName: [member.firstName, member.lastName].filter(Boolean).join(' ') || member.email,
+    };
   }
 
   private async getOrganizationId(): Promise<string> {

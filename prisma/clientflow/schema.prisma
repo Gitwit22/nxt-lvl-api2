@@ -461,6 +461,8 @@ model CfProgramEnrollment {
   status               CfEnrollmentStatus     @default(interested)
   assignedUserId       String?
   assignedStaff        String?
+  lastModifiedByUserId String?
+  lastModifiedByDisplayName String?
   startDate            DateTime?
   nextAction           String?
   nextActionDate       DateTime?
@@ -488,6 +490,7 @@ model CfProgramEnrollment {
   @@index([organizationId])
   @@index([organizationId, programId, status])
   @@index([organizationId, clientId])
+  @@index([organizationId, lastModifiedByUserId])
   @@index([organizationId, isDemo])
 }
 
@@ -498,6 +501,7 @@ model CfEnrollmentStatusHistory {
   previousStatus  CfEnrollmentStatus?
   newStatus       CfEnrollmentStatus
   changedByUserId String?
+  changedByDisplayName String?
   reason          String?
   createdAt       DateTime            @default(now())
 

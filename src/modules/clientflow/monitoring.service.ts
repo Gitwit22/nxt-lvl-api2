@@ -81,6 +81,7 @@ export class MonitoringService {
 
   async recordResult(id: string, dto: RecordCfEnrollmentMonitoringResultDto) {
     const organizationId = await this.getOrganizationId();
+    const actor = await this.getActor(organizationId);
     const monitoring = await this.prisma.cfEnrollmentMonitoring.findFirst({
       where: { id, organizationId },
     });
@@ -107,7 +108,7 @@ export class MonitoringService {
           complianceStatus: dto.complianceStatus,
           reviewedAt,
           nextReviewAt: calculatedNextReview,
-          reviewedByUserId: this.actorId,
+          reviewedByUserId: actor.id,
           followUpRequired,
           notes: dto.notes,
           previousValue: {
@@ -141,7 +142,7 @@ export class MonitoringService {
           enrollmentId: enrollment.id,
           action: 'monitoring_result_entered',
           description: `Monitoring result entered for ${monitoring.name}.`,
-          user: this.actorId ?? 'System',
+          user: actor.displayName,
           isDemo: monitoring.isDemo,
         },
       });
@@ -164,6 +165,20 @@ export class MonitoringService {
 
   private get actorId(): string | undefined {
     return this.request.headers['x-admin-id'] as string | undefined;
+  }
+
+  private async getActor(organizationId: string) {
+    const actorId = this.actorId;
+    if (!actorId) throw new NotFoundException('Admin context missing.');
+    const actor = await this.primaryPrisma.adminUser.findFirst({
+      where: { id: actorId, organizationId, isActive: true },
+      select: { id: true, email: true, firstName: true, lastName: true },
+    });
+    if (!actor) throw new NotFoundException('Active organization member not found.');
+    return {
+      id: actor.id,
+      displayName: [actor.firstName, actor.lastName].filter(Boolean).join(' ') || actor.email,
+    };
   }
 
   private async getEnrollment(enrollmentId: string, organizationId: string) {

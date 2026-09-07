@@ -47,5 +47,6 @@ export interface CfProgramDetailResponse {
     terms: Record<string, unknown>[];
     contracts: Record<string, unknown>[];
     monitoring: Record<string, unknown>[];
+    statusHistory: Record<string, unknown>[];
   }>;
 }

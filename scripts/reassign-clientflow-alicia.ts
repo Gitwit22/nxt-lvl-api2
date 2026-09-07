@@ -4,7 +4,12 @@ const prisma = new PrismaClient();
 const apply = process.argv.includes('--apply');
 const targetEmail = 'eamanagementllc@gmail.com';
 const legacyUserId = 'user_alicia';
-const legacyDisplayName = 'Alicia Monroe';
+const legacyDisplayNames = ['Alicia Monroe', 'Aliciaan Monroe'];
+
+const legacyNameFilters = legacyDisplayNames.map((name) => ({
+  equals: name,
+  mode: 'insensitive' as const,
+}));
 
 async function main() {
   const matches = await prisma.adminUser.findMany({
@@ -20,9 +25,23 @@ async function main() {
   const displayName = [actor.firstName, actor.lastName].filter(Boolean).join(' ') || actor.email;
   const counts = {
     activities: await prisma.cfActivityLog.count({
-      where: { ...scope, OR: [{ user: legacyDisplayName }, { actorUserId: legacyUserId }] },
+      where: {
+        ...scope,
+        OR: [
+          { actorUserId: legacyUserId },
+          ...legacyNameFilters.map((user) => ({ user })),
+        ],
+      },
     }),
-    clients: await prisma.cfClient.count({ where: { ...scope, assignedUserId: legacyUserId } }),
+    clients: await prisma.cfClient.count({
+      where: {
+        ...scope,
+        OR: [
+          { assignedUserId: legacyUserId },
+          ...legacyNameFilters.map((assignedStaff) => ({ assignedStaff })),
+        ],
+      },
+    }),
     formAssignments: await prisma.cfFormAssignment.count({
       where: {
         ...scope,
@@ -30,12 +49,32 @@ async function main() {
       },
     }),
     enrollments: await prisma.cfProgramEnrollment.count({
-      where: { ...scope, assignedUserId: legacyUserId },
+      where: {
+        ...scope,
+        OR: [
+          { assignedUserId: legacyUserId },
+          ...legacyNameFilters.map((assignedStaff) => ({ assignedStaff })),
+        ],
+      },
     }),
     enrollmentHistory: await prisma.cfEnrollmentStatusHistory.count({
-      where: { ...scope, changedByUserId: legacyUserId },
+      where: {
+        ...scope,
+        OR: [
+          { changedByUserId: legacyUserId },
+          ...legacyNameFilters.map((changedByDisplayName) => ({ changedByDisplayName })),
+        ],
+      },
     }),
-    tasks: await prisma.cfTask.count({ where: { ...scope, assignedUserId: legacyUserId } }),
+    tasks: await prisma.cfTask.count({
+      where: {
+        ...scope,
+        OR: [
+          { assignedUserId: legacyUserId },
+          ...legacyNameFilters.map((assignedStaff) => ({ assignedStaff })),
+        ],
+      },
+    }),
   };
 
   console.log(JSON.stringify({ mode: apply ? 'apply' : 'dry-run', actor, displayName, counts }, null, 2));
@@ -43,15 +82,23 @@ async function main() {
 
   await prisma.$transaction([
     prisma.cfActivityLog.updateMany({
-      where: { ...scope, user: legacyDisplayName },
-      data: { user: displayName, actorUserId: actor.id },
-    }),
-    prisma.cfActivityLog.updateMany({
-      where: { ...scope, actorUserId: legacyUserId },
+      where: {
+        ...scope,
+        OR: [
+          { actorUserId: legacyUserId },
+          ...legacyNameFilters.map((user) => ({ user })),
+        ],
+      },
       data: { actorUserId: actor.id, user: displayName },
     }),
     prisma.cfClient.updateMany({
-      where: { ...scope, assignedUserId: legacyUserId },
+      where: {
+        ...scope,
+        OR: [
+          { assignedUserId: legacyUserId },
+          ...legacyNameFilters.map((assignedStaff) => ({ assignedStaff })),
+        ],
+      },
       data: { assignedUserId: actor.id, assignedStaff: displayName },
     }),
     prisma.cfFormAssignment.updateMany({
@@ -63,15 +110,33 @@ async function main() {
       data: { createdByUserId: actor.id },
     }),
     prisma.cfProgramEnrollment.updateMany({
-      where: { ...scope, assignedUserId: legacyUserId },
+      where: {
+        ...scope,
+        OR: [
+          { assignedUserId: legacyUserId },
+          ...legacyNameFilters.map((assignedStaff) => ({ assignedStaff })),
+        ],
+      },
       data: { assignedUserId: actor.id, assignedStaff: displayName },
     }),
     prisma.cfEnrollmentStatusHistory.updateMany({
-      where: { ...scope, changedByUserId: legacyUserId },
-      data: { changedByUserId: actor.id },
+      where: {
+        ...scope,
+        OR: [
+          { changedByUserId: legacyUserId },
+          ...legacyNameFilters.map((changedByDisplayName) => ({ changedByDisplayName })),
+        ],
+      },
+      data: { changedByUserId: actor.id, changedByDisplayName: displayName },
     }),
     prisma.cfTask.updateMany({
-      where: { ...scope, assignedUserId: legacyUserId },
+      where: {
+        ...scope,
+        OR: [
+          { assignedUserId: legacyUserId },
+          ...legacyNameFilters.map((assignedStaff) => ({ assignedStaff })),
+        ],
+      },
       data: { assignedUserId: actor.id, assignedStaff: displayName },
     }),
     prisma.cfProgramProgressTemplateVersion.updateMany({

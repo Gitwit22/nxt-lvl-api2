@@ -20,6 +20,7 @@ describe('ClientflowService.getProgramDetail', () => {
     cfTerms: { findMany: jest.fn() },
     cfContract: { findMany: jest.fn() },
     cfEnrollmentMonitoring: { findMany: jest.fn() },
+    cfEnrollmentStatusHistory: { findMany: jest.fn() },
     cfIntakeSubmission: { findMany: jest.fn() },
     cfIntakeSubmissionSnapshot: { findMany: jest.fn() },
     cfFormTemplate: { findMany: jest.fn() },
@@ -48,6 +49,7 @@ describe('ClientflowService.getProgramDetail', () => {
     prisma.cfTerms.findMany.mockResolvedValue([]);
     prisma.cfContract.findMany.mockResolvedValue([]);
     prisma.cfEnrollmentMonitoring.findMany.mockResolvedValue([]);
+    prisma.cfEnrollmentStatusHistory.findMany.mockResolvedValue([]);
     prisma.cfIntakeSubmission.findMany.mockResolvedValue([]);
     prisma.cfIntakeSubmissionSnapshot.findMany.mockResolvedValue([]);
     prisma.cfFormTemplate.findMany.mockResolvedValue([]);
@@ -133,6 +135,14 @@ describe('ClientflowService.getProgramDetail', () => {
       { id: 'terms-1', clientId: 'client-1', enrollmentId: 'enrollment-1' },
       { id: 'terms-other', clientId: 'client-1', enrollmentId: 'enrollment-other' },
     ]);
+    prisma.cfEnrollmentStatusHistory.findMany.mockResolvedValue([{
+      id: 'history-1',
+      enrollmentId: 'enrollment-1',
+      newStatus: 'active',
+      changedByUserId: 'admin-1',
+      changedByDisplayName: 'Alex Admin',
+      createdAt: submittedAt,
+    }]);
 
     const result = await createService().getProgramDetail('program-1');
 
@@ -148,6 +158,12 @@ describe('ClientflowService.getProgramDetail', () => {
     expect(result.participants[0].forms[0].answers[0].label).toBe('Annual revenue');
     expect(result.participants[0].terms).toEqual([
       { id: 'terms-1', clientId: 'client-1', enrollmentId: 'enrollment-1' },
+    ]);
+    expect(result.participants[0].statusHistory).toEqual([
+      expect.objectContaining({
+        id: 'history-1',
+        changedByDisplayName: 'Alex Admin',
+      }),
     ]);
     expect(prisma.cfProgram.findFirst).toHaveBeenCalledWith({
       where: { id: 'program-1', organizationId: 'org-1' },
