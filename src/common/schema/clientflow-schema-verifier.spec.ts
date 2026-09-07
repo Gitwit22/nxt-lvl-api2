@@ -1,0 +1,34 @@
+const {
+  findMissingClientflowSchema,
+  REQUIRED_CLIENTFLOW_SCHEMA,
+}: {
+  findMissingClientflowSchema: (columns: Array<{ table_name: string; column_name: string }>) => string[];
+  REQUIRED_CLIENTFLOW_SCHEMA: Record<string, string[]>;
+} = require('../../../scripts/ensure-clientflow-settings-schema');
+
+describe('ClientFlow schema verifier', () => {
+  const completeSchema = Object.entries(REQUIRED_CLIENTFLOW_SCHEMA).flatMap(
+    ([tableName, columnNames]) => columnNames.map((columnName) => ({
+      table_name: tableName,
+      column_name: columnName,
+    })),
+  );
+
+  it('accepts all schema dependencies used by public form submission', () => {
+    expect(findMissingClientflowSchema(completeSchema)).toEqual([]);
+  });
+
+  it('reports missing notification and intake response dependencies', () => {
+    const incompleteSchema = completeSchema.filter(({ table_name, column_name }) =>
+      !(
+        (table_name === 'CfNotification' && column_name === 'submissionId')
+        || (table_name === 'CfIntakeSubmissionProgram' && column_name === 'responsePayload')
+      ),
+    );
+
+    expect(findMissingClientflowSchema(incompleteSchema)).toEqual([
+      'CfIntakeSubmissionProgram.responsePayload',
+      'CfNotification.submissionId',
+    ]);
+  });
+});

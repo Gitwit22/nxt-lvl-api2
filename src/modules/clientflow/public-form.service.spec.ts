@@ -1,4 +1,5 @@
 import type { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
+import { Prisma } from '../../generated/clientflow';
 import { PublicFormService, RenderedSection } from './public-form.service';
 
 describe('PublicFormService.submitPublicForm', () => {
@@ -294,6 +295,22 @@ describe('PublicFormService.submitPublicForm', () => {
     expect(tx.cfIntakeSubmissionSnapshot.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ selectedProgramIds: [] }),
     });
+  });
+
+  it('propagates a missing notification table as a non-retryable deployment error', async () => {
+    const { service, prisma, tx } = setup();
+    const schemaError = new Prisma.PrismaClientKnownRequestError(
+      'The table public.CfNotification does not exist in the current database.',
+      {
+        code: 'P2021',
+        clientVersion: '6.19.0',
+        meta: { table: 'public.CfNotification' },
+      },
+    );
+    tx.cfNotification.createMany.mockRejectedValue(schemaError);
+
+    await expect(service.submitPublicForm('secure-token', dto)).rejects.toBe(schemaError);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it('still rejects a missing required non-file program answer', async () => {

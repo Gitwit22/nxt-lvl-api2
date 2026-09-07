@@ -1,6 +1,46 @@
 const { PrismaClient } = require('@prisma/client');
 const { PrismaClient: ClientflowPrismaClient } = require('../src/generated/clientflow');
 
+const REQUIRED_CLIENTFLOW_SCHEMA = {
+  AdminUser: ['jobTitle'],
+  CfIntakeSubmission: [
+    'configurationToken',
+    'formAssignmentId',
+    'idempotencyKey',
+    'requestHash',
+    'responsePayload',
+    'resultPayload',
+  ],
+  CfIntakeRenderSession: ['configurationToken', 'renderedSections', 'expiresAt'],
+  CfIntakeSubmissionSnapshot: ['intakeSubmissionId', 'renderedSections', 'selectedProgramIds'],
+  CfIntakeSubmissionProgram: ['intakeSubmissionId', 'programId', 'enrollmentId', 'responsePayload'],
+  CfNotification: [
+    'id',
+    'organizationId',
+    'recipientAdminId',
+    'type',
+    'title',
+    'message',
+    'actionUrl',
+    'sourceType',
+    'sourceId',
+    'clientId',
+    'submissionId',
+    'readAt',
+    'isDemo',
+    'createdAt',
+  ],
+};
+
+function findMissingClientflowSchema(columns) {
+  const available = new Set(columns.map(({ table_name, column_name }) => `${table_name}.${column_name}`));
+  return Object.entries(REQUIRED_CLIENTFLOW_SCHEMA).flatMap(([tableName, columnNames]) =>
+    columnNames
+      .filter((columnName) => !available.has(`${tableName}.${columnName}`))
+      .map((columnName) => `${tableName}.${columnName}`),
+  );
+}
+
 async function main() {
   const primary = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL });
   const clientflow = new ClientflowPrismaClient({
@@ -70,18 +110,22 @@ async function main() {
       SELECT table_name, column_name
       FROM information_schema.columns
       WHERE table_schema = current_schema()
-        AND (
-          (table_name = 'AdminUser' AND column_name = 'jobTitle')
-          OR (table_name = 'CfNotification' AND column_name IN (
-            'id', 'organizationId', 'recipientAdminId', 'type', 'title', 'message',
-            'actionUrl', 'sourceType', 'sourceId', 'clientId', 'submissionId',
-            'readAt', 'isDemo', 'createdAt'
-          ))
+        AND table_name IN (
+          'AdminUser',
+          'CfIntakeSubmission',
+          'CfIntakeRenderSession',
+          'CfIntakeSubmissionSnapshot',
+          'CfIntakeSubmissionProgram',
+          'CfNotification'
         )
     `);
 
-    if (primaryColumns.length !== 4 || clientflowColumns.length !== 15) {
-      throw new Error('ClientFlow settings schema could not be verified.');
+    const missingClientflowSchema = findMissingClientflowSchema(clientflowColumns);
+    if (primaryColumns.length !== 4 || missingClientflowSchema.length > 0) {
+      const details = missingClientflowSchema.length > 0
+        ? ` Missing ClientFlow schema: ${missingClientflowSchema.join(', ')}.`
+        : '';
+      throw new Error(`ClientFlow settings schema could not be verified.${details}`);
     }
 
     console.log('ClientFlow settings, member, and notification schema verified.');
@@ -90,7 +134,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error('ClientFlow settings schema repair failed.', error);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error('ClientFlow settings schema repair failed.', error);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { findMissingClientflowSchema, main, REQUIRED_CLIENTFLOW_SCHEMA };
