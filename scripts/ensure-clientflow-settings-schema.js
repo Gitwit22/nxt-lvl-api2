@@ -15,6 +15,8 @@ const REQUIRED_CLIENTFLOW_SCHEMA = {
   CfIntakeSubmissionSnapshot: ['intakeSubmissionId', 'renderedSections', 'selectedProgramIds'],
   CfIntakeSubmissionProgram: ['intakeSubmissionId', 'programId', 'enrollmentId', 'responsePayload'],
   CfProgramEnrollment: ['lastModifiedByUserId', 'lastModifiedByDisplayName'],
+  CfEnrollmentStatusHistory: ['changedByDisplayName'],
+  CfActivityLog: ['actorUserId'],
   CfNotification: [
     'id',
     'organizationId',
@@ -74,6 +76,18 @@ async function main() {
       ON "CfProgramEnrollment"("organizationId", "lastModifiedByUserId")
     `);
     await clientflow.$executeRawUnsafe(`
+      ALTER TABLE "CfEnrollmentStatusHistory"
+      ADD COLUMN IF NOT EXISTS "changedByDisplayName" TEXT
+    `);
+    await clientflow.$executeRawUnsafe(`
+      ALTER TABLE "CfActivityLog"
+      ADD COLUMN IF NOT EXISTS "actorUserId" TEXT
+    `);
+    await clientflow.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "CfActivityLog_organizationId_actorUserId_idx"
+      ON "CfActivityLog"("organizationId", "actorUserId")
+    `);
+    await clientflow.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "CfNotification" (
         "id" TEXT NOT NULL,
         "organizationId" TEXT NOT NULL,
@@ -127,6 +141,8 @@ async function main() {
           'CfIntakeSubmissionSnapshot',
           'CfIntakeSubmissionProgram',
           'CfProgramEnrollment',
+          'CfEnrollmentStatusHistory',
+          'CfActivityLog',
           'CfNotification'
         )
     `);

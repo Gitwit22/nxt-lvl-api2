@@ -24,12 +24,14 @@ describe('ClientFlow schema verifier', () => {
         (table_name === 'CfNotification' && column_name === 'submissionId')
         || (table_name === 'CfIntakeSubmissionProgram' && column_name === 'responsePayload')
         || (table_name === 'CfProgramEnrollment' && column_name === 'lastModifiedByUserId')
+        || (table_name === 'CfActivityLog' && column_name === 'actorUserId')
       ),
     );
 
     expect(findMissingClientflowSchema(incompleteSchema)).toEqual([
       'CfIntakeSubmissionProgram.responsePayload',
       'CfProgramEnrollment.lastModifiedByUserId',
+      'CfActivityLog.actorUserId',
       'CfNotification.submissionId',
     ]);
   });
