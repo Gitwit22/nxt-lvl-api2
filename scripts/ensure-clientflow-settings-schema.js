@@ -14,6 +14,7 @@ const REQUIRED_CLIENTFLOW_SCHEMA = {
   CfIntakeRenderSession: ['configurationToken', 'renderedSections', 'expiresAt'],
   CfIntakeSubmissionSnapshot: ['intakeSubmissionId', 'renderedSections', 'selectedProgramIds'],
   CfIntakeSubmissionProgram: ['intakeSubmissionId', 'programId', 'enrollmentId', 'responsePayload'],
+  CfProgramEnrollment: ['lastModifiedByUserId', 'lastModifiedByDisplayName'],
   CfNotification: [
     'id',
     'organizationId',
@@ -62,6 +63,15 @@ async function main() {
     await clientflow.$executeRawUnsafe(`
       ALTER TABLE "AdminUser"
       ADD COLUMN IF NOT EXISTS "jobTitle" TEXT
+    `);
+    await clientflow.$executeRawUnsafe(`
+      ALTER TABLE "CfProgramEnrollment"
+      ADD COLUMN IF NOT EXISTS "lastModifiedByUserId" TEXT,
+      ADD COLUMN IF NOT EXISTS "lastModifiedByDisplayName" TEXT
+    `);
+    await clientflow.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "CfProgramEnrollment_organizationId_lastModifiedByUserId_idx"
+      ON "CfProgramEnrollment"("organizationId", "lastModifiedByUserId")
     `);
     await clientflow.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "CfNotification" (
@@ -116,6 +126,7 @@ async function main() {
           'CfIntakeRenderSession',
           'CfIntakeSubmissionSnapshot',
           'CfIntakeSubmissionProgram',
+          'CfProgramEnrollment',
           'CfNotification'
         )
     `);
