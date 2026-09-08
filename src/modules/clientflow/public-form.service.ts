@@ -24,6 +24,11 @@ interface ClientIntake {
   additionalComments?: string;
 }
 
+type PublicFormSubmissionResult = {
+  success: boolean;
+  enrollmentIds: string[];
+};
+
 export interface RenderedSection {
   id: string;
   kind: 'core' | 'program';
@@ -395,7 +400,10 @@ export class PublicFormService {
     };
   }
 
-  async submitPublicForm(token: string, dto: SubmitPublicFormDto) {
+  async submitPublicForm(
+    token: string,
+    dto: SubmitPublicFormDto,
+  ): Promise<PublicFormSubmissionResult> {
     const assignment = await this.prisma.cfFormAssignment.findUnique({
       where: { secureLinkToken: token },
     });
@@ -520,7 +528,10 @@ export class PublicFormService {
     );
     const desiredStartDate = resolveDesiredStartDate(coreSection.fields, dto.coreResponses);
     const now = new Date();
-    const execute = async () => this.prisma.$transaction(async (tx) => {
+    const execute = async (): Promise<{
+      result: PublicFormSubmissionResult;
+      submissionId: string;
+    }> => this.prisma.$transaction(async (tx) => {
       const existing = await tx.cfIntakeSubmission.findFirst({
         where: {
           organizationId: assignment.organizationId,
@@ -531,7 +542,10 @@ export class PublicFormService {
         },
       });
       if (existing) {
-        return this.resolveReplay(existing, assignment.id, dto.idempotencyKey, requestHash);
+        return {
+          result: this.resolveReplay(existing, assignment.id, dto.idempotencyKey, requestHash),
+          submissionId: existing.id,
+        };
       }
 
       const existingEnrollments = await tx.cfProgramEnrollment.findMany({
@@ -759,13 +773,27 @@ export class PublicFormService {
     formAssignmentId: string,
     idempotencyKey: string,
     requestHash: string,
-  ) {
+  ): PublicFormSubmissionResult {
     if (submission.formAssignmentId !== formAssignmentId) {
       throw new BadRequestException('This idempotency key belongs to a different form assignment.');
     }
     if (submission.idempotencyKey === idempotencyKey && submission.requestHash !== requestHash) {
       throw new BadRequestException('This idempotency key was already used with different answers.');
     }
-    return submission.resultPayload;
+    const result = submission.resultPayload;
+    if (
+      typeof result !== 'object'
+      || result === null
+      || Array.isArray(result)
+      || typeof result['success'] !== 'boolean'
+      || !Array.isArray(result['enrollmentIds'])
+      || result['enrollmentIds'].some((id) => typeof id !== 'string')
+    ) {
+      throw new BadRequestException('The stored submission result is invalid.');
+    }
+    return {
+      success: result['success'],
+      enrollmentIds: result['enrollmentIds'] as string[],
+    };
   }
 }

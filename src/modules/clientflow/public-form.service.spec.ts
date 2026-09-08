@@ -160,7 +160,7 @@ describe('PublicFormService.submitPublicForm', () => {
   };
 
   it('updates the client and links answers and start date to the selected program', async () => {
-    const { service, tx } = setup();
+    const { service, prisma, tx } = setup();
 
     await expect(service.submitPublicForm('secure-token', dto)).resolves.toEqual({
       success: true,
