@@ -1,5 +1,7 @@
 -- Run against the production DATABASE_URL in the Neon SQL editor before
 -- resolving any primary migration. This script is read-only.
+-- Required platform objects and legacy ClientFlow isolation are reported
+-- separately because a clean primary database intentionally has no Cf* tables.
 
 SELECT
   'migration_history_table' AS check_group,
@@ -17,13 +19,6 @@ WITH expected_columns(migration_name, table_name, column_name) AS (
     ('20260818225500_add_clientflow_live_mode', 'Organization', 'demoRemovedAt'),
     ('20260818225500_add_clientflow_live_mode', 'Organization', 'principalAdminId'),
     ('20260818225500_add_clientflow_live_mode', 'AdminInvitation', 'revokedAt'),
-    ('20260818225500_add_clientflow_live_mode', 'CfTerms', 'isDemo'),
-    ('20260818225500_add_clientflow_live_mode', 'CfMonitoringItem', 'isDemo'),
-    ('20260818225500_add_clientflow_live_mode', 'CfContract', 'isDemo'),
-    ('20260818225500_add_clientflow_live_mode', 'CfDocument', 'isDemo'),
-    ('20260818225500_add_clientflow_live_mode', 'CfCommunication', 'isDemo'),
-    ('20260818225500_add_clientflow_live_mode', 'CfFinalReport', 'isDemo'),
-    ('20260818225500_add_clientflow_live_mode', 'CfActivityLog', 'isDemo'),
     ('20260831120000_add_refresh_sessions', 'AuthSession', 'refreshTokenHash'),
     ('20260831120000_add_refresh_sessions', 'AuthSession', 'refreshExpiresAt'),
     ('20260831120000_add_refresh_sessions', 'AuthSession', 'refreshRotatedAt'),
@@ -66,15 +61,6 @@ WITH expected_indexes(migration_name, index_name) AS (
     ('20260818225500_add_clientflow_live_mode', 'AuthSession_jti_key'),
     ('20260818225500_add_clientflow_live_mode', 'AuthSession_adminUserId_revokedAt_idx'),
     ('20260818225500_add_clientflow_live_mode', 'AuthSession_expiresAt_idx'),
-    ('20260818225500_add_clientflow_live_mode', 'CfClient_organizationId_isDemo_idx'),
-    ('20260818225500_add_clientflow_live_mode', 'CfFormAssignment_organizationId_isDemo_idx'),
-    ('20260818225500_add_clientflow_live_mode', 'CfTerms_organizationId_isDemo_idx'),
-    ('20260818225500_add_clientflow_live_mode', 'CfMonitoringItem_organizationId_isDemo_idx'),
-    ('20260818225500_add_clientflow_live_mode', 'CfContract_organizationId_isDemo_idx'),
-    ('20260818225500_add_clientflow_live_mode', 'CfDocument_organizationId_isDemo_idx'),
-    ('20260818225500_add_clientflow_live_mode', 'CfCommunication_organizationId_isDemo_idx'),
-    ('20260818225500_add_clientflow_live_mode', 'CfFinalReport_organizationId_isDemo_idx'),
-    ('20260818225500_add_clientflow_live_mode', 'CfActivityLog_organizationId_isDemo_idx'),
     ('20260831120000_add_refresh_sessions', 'AuthSession_refreshTokenHash_key'),
     ('20260831120000_add_refresh_sessions', 'AuthSession_refreshExpiresAt_idx')
 )
@@ -109,6 +95,22 @@ SELECT
   ) AS is_present
 FROM expected_constraints
 ORDER BY migration_name, object_name;
+
+SELECT
+  table_name,
+  'legacy_clientflow_table_must_be_absent' AS check_group,
+  false AS isolation_ready
+FROM information_schema.tables
+WHERE table_schema = 'public'
+  AND table_name LIKE 'Cf%'
+ORDER BY table_name;
+
+SELECT
+  COUNT(*) = 0 AS clientflow_tables_absent,
+  COUNT(*) AS clientflow_table_count
+FROM information_schema.tables
+WHERE table_schema = 'public'
+  AND table_name LIKE 'Cf%';
 
 -- This intentionally excludes passwordHash.
 SELECT

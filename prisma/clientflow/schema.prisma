@@ -14,6 +14,18 @@ enum AdminRole {
   reviewer
 }
 
+enum AuditAction {
+  created
+  updated
+  approved
+  rejected
+  suspended
+  published
+  verified
+  deleted
+  login
+}
+
 model Organization {
   id               String      @id @default(cuid())
   name             String
@@ -27,6 +39,7 @@ model Organization {
   updatedAt        DateTime    @updatedAt
   adminUsers       AdminUser[] @relation("OrganizationMembers")
   principalAdmin   AdminUser?  @relation("OrganizationPrincipal", fields: [principalAdminId], references: [id], onDelete: SetNull)
+  auditLogs        AuditLog[]
 }
 
 model AdminUser {
@@ -48,6 +61,7 @@ model AdminUser {
   invitation   AdminInvitation?
   sessions     AuthSession[]
   notifications CfNotification[]
+  auditLogs      AuditLog[]
 
   @@index([organizationId, role])
 }
@@ -106,6 +120,28 @@ model AuthSession {
   @@index([adminUserId, revokedAt])
   @@index([expiresAt])
   @@index([refreshExpiresAt])
+}
+
+model AuditLog {
+  id             String      @id @default(cuid())
+  organizationId String?
+  programId      String?
+  actorAdminId   String?
+  action         AuditAction
+  targetType     String
+  targetId       String
+  beforeData     Json?
+  afterData      Json?
+  metadata       Json?
+  createdAt      DateTime    @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  actorAdmin   AdminUser?    @relation(fields: [actorAdminId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([programId])
+  @@index([targetType, targetId])
+  @@index([createdAt])
 }
 
 enum CfEnrollmentStatus {

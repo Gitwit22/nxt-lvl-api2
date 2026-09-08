@@ -1,7 +1,6 @@
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 import { CfEnrollmentStatus } from '../../generated/clientflow';
 import type { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
-import type { PrismaService } from '../../prisma/prisma.service';
 import { EnrollmentService } from './enrollment.service';
 
 describe('EnrollmentService attribution', () => {
@@ -13,10 +12,8 @@ describe('EnrollmentService attribution', () => {
     cfClient: { findFirst: jest.fn() },
     cfProgram: { findFirst: jest.fn() },
     cfProgramEnrollment: { findFirst: jest.fn() },
-    $transaction: jest.fn((operation: (tx: typeof transaction) => unknown) => operation(transaction)),
-  };
-  const primaryPrisma = {
     adminUser: { findFirst: jest.fn() },
+    $transaction: jest.fn((operation: (tx: typeof transaction) => unknown) => operation(transaction)),
   };
   const request = {
     headers: { 'x-org-id': 'org-1', 'x-admin-id': 'actor-1' },
@@ -26,7 +23,6 @@ describe('EnrollmentService attribution', () => {
     return new EnrollmentService(
       request,
       prisma as unknown as ClientflowPrismaService,
-      primaryPrisma as unknown as PrismaService,
     );
   }
 
@@ -37,7 +33,7 @@ describe('EnrollmentService attribution', () => {
   });
 
   it('defaults a new enrollment to the authenticated admin with email fallback', async () => {
-    primaryPrisma.adminUser.findFirst.mockResolvedValue({
+    prisma.adminUser.findFirst.mockResolvedValue({
       id: 'actor-1',
       email: 'owner@example.com',
       firstName: null,
@@ -67,7 +63,7 @@ describe('EnrollmentService attribution', () => {
   });
 
   it('keeps an explicit assignee distinct from the admin who changes status', async () => {
-    primaryPrisma.adminUser.findFirst.mockImplementation(({ where }: { where: { id: string } }) =>
+    prisma.adminUser.findFirst.mockImplementation(({ where }: { where: { id: string } }) =>
       Promise.resolve(where.id === 'actor-1'
         ? { id: 'actor-1', email: 'actor@example.com', firstName: 'Alex', lastName: 'Admin' }
         : { id: 'staff-1', email: 'staff@example.com', firstName: 'Erin', lastName: 'Advisor' }),

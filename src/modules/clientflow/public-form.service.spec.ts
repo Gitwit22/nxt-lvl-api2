@@ -102,10 +102,6 @@ describe('PublicFormService.submitPublicForm', () => {
       cfFormAssignment: { update: jest.fn().mockResolvedValue({}) },
       cfClient: { update: jest.fn().mockResolvedValue({}) },
       cfActivityLog: { create: jest.fn().mockResolvedValue({}) },
-      adminUser: {
-        findMany: jest.fn().mockResolvedValue([{ id: 'admin-1' }, { id: 'admin-2' }]),
-      },
-      cfNotification: { createMany: jest.fn().mockResolvedValue({ count: 2 }) },
     };
     const prisma = {
       cfFormAssignment: { findUnique: jest.fn().mockResolvedValue(assignment) },
@@ -119,6 +115,10 @@ describe('PublicFormService.submitPublicForm', () => {
         }),
       },
       cfProgram: { findMany: jest.fn().mockResolvedValue([{ id: 'program-1' }]) },
+      adminUser: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'admin-1' }, { id: 'admin-2' }]),
+      },
+      cfNotification: { createMany: jest.fn().mockResolvedValue({ count: 2 }) },
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)),
     };
     return {
@@ -193,6 +193,13 @@ describe('PublicFormService.submitPublicForm', () => {
         programId: 'program-1',
         status: 'interested',
         startDate: new Date('2026-10-15'),
+        lastModifiedByUserId: null,
+        lastModifiedByDisplayName: 'Client submission',
+      }),
+    });
+    expect(tx.cfEnrollmentStatusHistory.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changedByDisplayName: 'Client submission',
       }),
     });
     expect(tx.cfIntakeSubmissionProgram.createMany).toHaveBeenCalledWith({
@@ -229,7 +236,7 @@ describe('PublicFormService.submitPublicForm', () => {
     const clientUpdate = tx.cfClient.update.mock.calls[0][0];
     expect(clientUpdate.data).not.toHaveProperty('referralDetail');
     expect(clientUpdate.data.intake).not.toHaveProperty('referralDetail');
-    expect(tx.cfNotification.createMany).toHaveBeenCalledWith({
+    expect(prisma.cfNotification.createMany).toHaveBeenCalledWith({
       data: [
         expect.objectContaining({
           recipientAdminId: 'admin-1',
@@ -297,7 +304,7 @@ describe('PublicFormService.submitPublicForm', () => {
     });
   });
 
-  it('propagates a missing notification table as a non-retryable deployment error', async () => {
+  it('accepts a committed submission when notification persistence fails', async () => {
     const { service, prisma, tx } = setup();
     const schemaError = new Prisma.PrismaClientKnownRequestError(
       'The table public.CfNotification does not exist in the current database.',
@@ -307,10 +314,14 @@ describe('PublicFormService.submitPublicForm', () => {
         meta: { table: 'public.CfNotification' },
       },
     );
-    tx.cfNotification.createMany.mockRejectedValue(schemaError);
+    prisma.cfNotification.createMany.mockRejectedValue(schemaError);
 
-    await expect(service.submitPublicForm('secure-token', dto)).rejects.toBe(schemaError);
+    await expect(service.submitPublicForm('secure-token', dto)).resolves.toEqual({
+      success: true,
+      enrollmentIds: ['enrollment-1'],
+    });
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.cfFormAssignment.update).toHaveBeenCalled();
   });
 
   it('still rejects a missing required non-file program answer', async () => {

@@ -1,6 +1,6 @@
 # ClientFlow Database Migration
 
-ClientFlow now uses `CLIENTFLOW_DATABASE_URL`; platform identity, organizations, and audit logs continue to use `DATABASE_URL`. The old `Cf*` tables in the primary database are intentionally left untouched for rollback.
+ClientFlow uses `CLIENTFLOW_DATABASE_URL` as its sole data store, including its identity, organization, session, invitation, lifecycle, and audit data. `DATABASE_URL` is platform-only. The databases must be distinct, and the primary database must not contain `Cf*` tables.
 
 ## Production Deployment Order
 
@@ -19,7 +19,7 @@ The primary migration directory starts with an incremental migration, not a comp
 
 1. Create a Neon branch or point-in-time backup of the primary production database.
 2. Run `scripts/audit-primary-migration-baseline.sql` against `DATABASE_URL` in the Neon SQL editor.
-3. For each migration, confirm every listed object reports `is_present = true`. A migration with a mix of present and missing objects is partial; stop and repair it with reviewed, idempotent SQL before continuing.
+3. Confirm every required platform object reports `is_present = true` and `clientflow_tables_absent = true`. Legacy `Cf*` objects are reported separately because their absence is the desired isolated state.
 4. Mark only fully represented migrations as applied, in chronological order:
 
 ```powershell
@@ -42,11 +42,11 @@ npm run prisma:deploy:clientflow
 npx prisma migrate status --schema prisma/clientflow/schema.prisma
 ```
 
-Both status commands must report that the database schema is up to date before deploying the application.
+Both status commands must report that the database schema is up to date before deploying the application. Run `scripts/audit-clientflow-isolation.sql` against `CLIENTFLOW_DATABASE_URL` and require every orphan count to be zero.
 
 ## Preflight
 
-1. Confirm both URLs point to direct PostgreSQL connections and the target ClientFlow database is empty.
+1. Confirm both URLs point to distinct direct PostgreSQL connections and the ClientFlow database is the intended wild-moon production branch.
 2. Take or verify the primary Neon backup.
 3. Deploy code only after the copy and verification complete.
 4. Pause ClientFlow writes for the maintenance window. Other platform traffic may continue.
@@ -63,7 +63,7 @@ npm run clientflow:data:copy
 npm run clientflow:data:verify
 ```
 
-The copy command only reads `Cf*` tables from `DATABASE_URL`. It upserts target rows by stable IDs, so it can be rerun after a partial failure. It discovers source columns dynamically to support the legacy source schema, creates deterministic enrollments for legacy client/program pairs, and links operational records when the enrollment is unambiguous.
+The copy command is retained only for recovery from a legacy backup that still contains `Cf*` tables. It refuses to run against an already-clean primary database. Do not use it during normal deployments; wild-moon is authoritative.
 
 Do not run `prisma migrate deploy` for the primary schema during the initial data cutover until its migration history has been verified and baselined as described above.
 
@@ -87,8 +87,8 @@ The runner prompts for `CLIENTFLOW_DATABASE_URL` when it is not already set, kee
 ## Rollback
 
 1. Pause ClientFlow writes.
-2. Roll back the API deployment to the previous version.
-3. Keep the new ClientFlow database for investigation; do not copy data back automatically.
-4. Resume traffic only after confirming the previous API reads the untouched primary `Cf*` tables.
+2. Roll back the API deployment only to a version that still uses `CLIENTFLOW_DATABASE_URL` as the ClientFlow source of truth.
+3. Restore or branch wild-moon from its verified Neon backup when data recovery is required; never copy ClientFlow data back into the primary database.
+4. Resume traffic only after login, bootstrap, and a controlled ClientFlow read succeed against wild-moon.
 
 For a primary baseline failure, inspect `_prisma_migrations` before restoring data. A successful `migrate resolve` changes migration metadata only. Restore the Neon backup only when migration SQL changed schema or data and a forward repair is not appropriate.

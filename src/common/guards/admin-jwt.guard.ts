@@ -24,6 +24,9 @@ export class AdminJwtGuard implements CanActivate {
       const sessionId = String(tokenData['sessionId'] ?? '');
       const jti = String(tokenData['jti'] ?? '');
       if (!sessionId || !jti) throw new UnauthorizedException('Authenticated session is missing.');
+      if (tokenData['appPartition'] !== request.partition.slug) {
+        throw new UnauthorizedException('Authenticated partition is invalid.');
+      }
       const session = await this.prisma.authSession.findFirst({
         where: {
           id: sessionId,

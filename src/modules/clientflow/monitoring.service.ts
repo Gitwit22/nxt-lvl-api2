@@ -3,7 +3,6 @@ import { REQUEST } from '@nestjs/core';
 import { CfMonitoringFrequency } from '../../generated/clientflow';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 import { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
-import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateCfEnrollmentMonitoringDto,
   RecordCfEnrollmentMonitoringResultDto,
@@ -42,7 +41,6 @@ export class MonitoringService {
   constructor(
     @Inject(REQUEST) private readonly request: PartitionRequest,
     private readonly prisma: ClientflowPrismaService,
-    private readonly primaryPrisma: PrismaService,
   ) {}
 
   async list(enrollmentId?: string) {
@@ -170,7 +168,7 @@ export class MonitoringService {
   private async getActor(organizationId: string) {
     const actorId = this.actorId;
     if (!actorId) throw new NotFoundException('Admin context missing.');
-    const actor = await this.primaryPrisma.adminUser.findFirst({
+    const actor = await this.prisma.adminUser.findFirst({
       where: { id: actorId, organizationId, isActive: true },
       select: { id: true, email: true, firstName: true, lastName: true },
     });
@@ -199,7 +197,7 @@ export class MonitoringService {
     }
     const adminId = this.actorId;
     if (!adminId) throw new NotFoundException('Admin context missing.');
-    const admin = await this.primaryPrisma.adminUser.findUnique({ where: { id: adminId } });
+    const admin = await this.prisma.adminUser.findUnique({ where: { id: adminId } });
     if (!admin) throw new NotFoundException('Admin not found.');
     this.organizationId = admin.organizationId;
     return admin.organizationId;

@@ -5,6 +5,7 @@ import fbaAppPartition from '../../config/partitions/fba-app.partition.json';
 export const DEFAULT_PARTITION_SLUG = 'fba-app';
 
 export interface PartitionConfig {
+  slug: string;
   customerName: string;
   organizationSlug: string;
   organizationName: string;
@@ -19,8 +20,8 @@ export interface PartitionConfig {
 @Injectable()
 export class PartitionService {
   private readonly partitions = new Map<string, PartitionConfig>([
-    [DEFAULT_PARTITION_SLUG, fbaAppPartition],
-    ['clientflow', clientflowPartition],
+    [DEFAULT_PARTITION_SLUG, { slug: DEFAULT_PARTITION_SLUG, ...fbaAppPartition }],
+    ['clientflow', { slug: 'clientflow', ...clientflowPartition }],
   ]);
 
   getPartition(slug: string): PartitionConfig {

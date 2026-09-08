@@ -5,7 +5,6 @@ import { compare } from 'bcrypt';
 import { randomBytes, randomUUID } from 'crypto';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 import { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
-import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCfClientDto } from './dto/create-cf-client.dto';
 import { UpdateCfClientDto } from './dto/update-cf-client.dto';
 import { CreateCfProgramDto, UpdateCfProgramDto } from './dto/cf-program.dto';
@@ -186,7 +185,6 @@ export class ClientflowService {
   constructor(
     @Inject(REQUEST) private readonly request: PartitionRequest,
     private readonly prisma: ClientflowPrismaService,
-    private readonly primaryPrisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly files: FilesService,
   ) {}
@@ -205,7 +203,7 @@ export class ClientflowService {
     const adminId = this.request.headers['x-admin-id'] as string | undefined;
     if (!adminId) throw new NotFoundException('Admin context missing.');
 
-    const admin = await this.primaryPrisma.adminUser.findUnique({ where: { id: adminId } });
+    const admin = await this.prisma.adminUser.findUnique({ where: { id: adminId } });
     if (!admin) throw new NotFoundException('Admin not found.');
 
     this._orgId = admin.organizationId;
@@ -216,7 +214,7 @@ export class ClientflowService {
     const adminId = this.request.headers['x-admin-id'] as string | undefined;
     if (!adminId) throw new NotFoundException('Admin context missing.');
 
-    const admin = await this.primaryPrisma.adminUser.findFirst({
+    const admin = await this.prisma.adminUser.findFirst({
       where: { id: adminId, organizationId: orgId, isActive: true },
       select: { id: true, email: true, firstName: true, lastName: true },
     });
@@ -1300,7 +1298,7 @@ export class ClientflowService {
 
   async getDemoStatus() {
     const orgId = await this.getOrgId();
-    const organization = await this.primaryPrisma.organization.findUnique({
+    const organization = await this.prisma.organization.findUnique({
       where: { id: orgId },
       select: { liveMode: true, demoRemovedAt: true, principalAdminId: true },
     });
@@ -1401,7 +1399,7 @@ export class ClientflowService {
     const adminId = this.request.headers['x-admin-id'] as string | undefined;
     if (!adminId) throw new UnauthorizedException('Admin context missing.');
     const actor = await this.getAuthenticatedActor(orgId);
-    const organization = await this.primaryPrisma.organization.findUnique({
+    const organization = await this.prisma.organization.findUnique({
       where: { id: orgId },
     }) as unknown as LiveOrganizationState | null;
     if (!organization) throw new NotFoundException('Organization not found.');
@@ -1474,11 +1472,11 @@ export class ClientflowService {
       return { clients: 1, enrollments: enrollmentId ? 1 : 0, activity: 1 };
     });
 
-    await this.primaryPrisma.organization.update({
+    await this.prisma.organization.update({
       where: { id: orgId },
       data: { liveMode: false, demoRemovedAt: null },
     });
-    await this.primaryPrisma.auditLog.create({
+    await this.prisma.auditLog.create({
       data: {
         organizationId: orgId,
         actorAdminId: adminId,
@@ -1487,8 +1485,6 @@ export class ClientflowService {
         targetId: orgId,
         metadata: { event: 'CLIENTFLOW_DEMO_SEEDED', seeded },
       },
-    }).catch((error: unknown) => {
-      if (!isMissingTableError(error)) throw error;
     });
 
     return { seeded, removed, liveMode: false };
@@ -1504,7 +1500,7 @@ export class ClientflowService {
       throw new BadRequestException('Type REMOVE DEMO DATA to confirm.');
     }
 
-    const actor = await this.primaryPrisma.adminUser.findFirst({
+    const actor = await this.prisma.adminUser.findFirst({
       where: { id: adminId, organizationId: orgId },
     });
     if (!actor || !actor.isActive) throw new ForbiddenException('An active organization administrator is required.');
@@ -1515,7 +1511,7 @@ export class ClientflowService {
       throw new UnauthorizedException('Current password is incorrect.');
     }
 
-    const organization = await this.primaryPrisma.organization.findUnique({
+    const organization = await this.prisma.organization.findUnique({
       where: { id: orgId },
     }) as unknown as LiveOrganizationState | null;
     if (!organization) throw new NotFoundException('Organization not found.');
@@ -1523,7 +1519,7 @@ export class ClientflowService {
     const removed = await this.deletePersistedDemoData(orgId);
 
     const revokedAt = organization.demoRemovedAt ?? new Date();
-    const { updatedOrganization, transitioned } = await this.primaryPrisma.$transaction(async (tx) => {
+    const { updatedOrganization, transitioned } = await this.prisma.$transaction(async (tx) => {
       const current = await tx.organization.findUnique({ where: { id: orgId } });
       if (!current) throw new NotFoundException('Organization not found.');
       if (current.liveMode) return { updatedOrganization: current, transitioned: false };
@@ -1536,7 +1532,7 @@ export class ClientflowService {
     });
 
     if (transitioned) {
-      await this.primaryPrisma.auditLog.create({
+      await this.prisma.auditLog.create({
         data: {
           organizationId: orgId,
           actorAdminId: adminId,
@@ -1549,8 +1545,6 @@ export class ClientflowService {
             removedDemoData: true,
           },
         },
-      }).catch((error: unknown) => {
-        if (!isMissingTableError(error)) throw error;
       });
     }
 

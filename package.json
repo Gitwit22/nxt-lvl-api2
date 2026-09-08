@@ -6,8 +6,8 @@
   "scripts": {
     "build": "npm run prisma:generate && nest build",
     "postinstall": "npm run prisma:generate",
-    "start": "npm run deploy:prepare && node dist/main",
-    "start:prod": "npm run deploy:prepare && node dist/main",
+    "start": "node dist/main",
+    "start:prod": "node dist/main",
     "deploy:prepare": "npm run prisma:deploy && npm run prisma:deploy:clientflow && npm run prisma:ensure:clientflow-schema && npm run prisma:ensure:clientflow-auth",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",

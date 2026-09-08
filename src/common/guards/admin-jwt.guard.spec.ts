@@ -23,7 +23,10 @@ describe('AdminJwtGuard', () => {
     jest.clearAllMocks();
   });
 
-  function context(organizationId = 'org-1'): { context: ExecutionContext; request: PartitionRequest } {
+  function context(
+    organizationId = 'org-1',
+    tokenPartition = 'clientflow',
+  ): { context: ExecutionContext; request: PartitionRequest } {
     const token = sign(
       {
         email: 'admin@example.com',
@@ -31,6 +34,7 @@ describe('AdminJwtGuard', () => {
         sessionId: 'session-1',
         jti: 'jti-1',
         organizationId,
+        appPartition: tokenPartition,
       },
       process.env['JWT_SECRET']!,
       { subject: 'admin-1', issuer: 'clientflow-api', expiresIn: '15m' },
@@ -38,7 +42,7 @@ describe('AdminJwtGuard', () => {
     const request = {
       headers: { authorization: `Bearer ${token}` },
       cookies: {},
-      partition: { authIssuer: 'clientflow-api' },
+      partition: { slug: 'clientflow', authIssuer: 'clientflow-api' },
     } as PartitionRequest;
     return {
       request,
@@ -77,5 +81,12 @@ describe('AdminJwtGuard', () => {
     await expect(guard.canActivate(context('org-1').context)).rejects.toThrow(
       new UnauthorizedException('Authenticated organization is invalid.'),
     );
+  });
+
+  it('rejects a token issued for another application partition', async () => {
+    await expect(guard.canActivate(context('org-1', 'fba-app').context)).rejects.toThrow(
+      new UnauthorizedException('Authenticated partition is invalid.'),
+    );
+    expect(prisma.authSession.findFirst).not.toHaveBeenCalled();
   });
 });

@@ -26,7 +26,7 @@ describe('AuthService session lifecycle', () => {
     hash: jest.fn(),
   };
   const request = {
-    partition: { authIssuer: 'clientflow-api' },
+    partition: { slug: 'clientflow', authIssuer: 'clientflow-api' },
   } as PartitionRequest;
 
   function createService() {
@@ -81,6 +81,7 @@ describe('AuthService session lifecycle', () => {
     );
     expect(payload['jti']).toBe(update.data.jti);
     expect(payload['organizationId']).toBe('org-1');
+    expect(payload['appPartition']).toBe('clientflow');
   });
 
   it('rejects a refresh token that loses the rotation race', async () => {

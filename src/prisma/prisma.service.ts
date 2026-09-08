@@ -8,7 +8,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
   constructor(@Inject(REQUEST) request: PartitionRequest) {
     super({
       datasourceUrl:
-        request.partition.primaryProgramSlug === 'clientflow'
+        request.partition.slug === 'clientflow'
           ? process.env['CLIENTFLOW_DATABASE_URL']
           : process.env['DATABASE_URL'],
     });

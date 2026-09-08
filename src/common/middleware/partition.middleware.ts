@@ -11,6 +11,10 @@ export class PartitionMiddleware implements NestMiddleware {
     const header = request.header('x-app-partition');
     const path = request.originalUrl.split('?')[0].replace(/^\/api\/v1/, '');
     const requiresExplicitPartition =
+      path === '/auth' ||
+      path.startsWith('/auth/') ||
+      path === '/organizations' ||
+      path.startsWith('/organizations/') ||
       path === '/admin/cf' ||
       path.startsWith('/admin/cf/') ||
       path === '/public/form' ||

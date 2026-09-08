@@ -29,7 +29,12 @@ describe('PartitionMiddleware', () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['/api/v1/admin/cf/clients', '/api/v1/public/form/token-1'])(
+  it.each([
+    '/api/v1/auth/login',
+    '/api/v1/organizations/org-1/settings',
+    '/api/v1/admin/cf/clients',
+    '/api/v1/public/form/token-1',
+  ])(
     'rejects a missing partition on %s',
     (originalUrl) => {
       expect(() => middleware.use(request(originalUrl), response, next)).toThrow(
@@ -53,5 +58,13 @@ describe('PartitionMiddleware', () => {
 
     expect((req as PartitionRequest).partition.authIssuer).toBe('fbappinc-api2');
     expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('exposes the canonical partition slug to request-scoped services', () => {
+    const req = request('/api/v1/auth/login', 'CLIENTFLOW');
+
+    middleware.use(req, response, next);
+
+    expect((req as PartitionRequest).partition.slug).toBe('clientflow');
   });
 });

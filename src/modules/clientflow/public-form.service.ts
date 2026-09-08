@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CfEnrollmentStatus, Prisma } from '../../generated/clientflow';
 import { createHash, randomBytes } from 'crypto';
 import { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
@@ -222,6 +222,8 @@ function resolvePrefill(
 
 @Injectable()
 export class PublicFormService {
+  private readonly logger = new Logger(PublicFormService.name);
+
   constructor(private readonly prisma: ClientflowPrismaService) {}
 
   async getPublicForm(token: string) {
@@ -563,6 +565,8 @@ export class PublicFormService {
             assignedUserId: existingClient.assignedUserId,
             assignedStaff: existingClient.assignedStaff,
             startDate: desiredStartDate,
+            lastModifiedByUserId: null,
+            lastModifiedByDisplayName: 'Client submission',
             isDemo: existingClient.isDemo,
           },
         });
@@ -573,6 +577,7 @@ export class PublicFormService {
             enrollmentId: enrollment.id,
             newStatus: CfEnrollmentStatus.interested,
             reason: 'Created from master intake submission.',
+            changedByDisplayName: 'Client submission',
           },
         });
       }
@@ -597,28 +602,6 @@ export class PublicFormService {
           submittedAt: now,
         },
       });
-      const recipients = await tx.adminUser.findMany({
-        where: { organizationId: assignment.organizationId, isActive: true },
-        select: { id: true },
-      });
-      if (recipients.length > 0) {
-        await tx.cfNotification.createMany({
-          data: recipients.map(({ id: recipientAdminId }) => ({
-            organizationId: assignment.organizationId,
-            recipientAdminId,
-            type: 'form_submitted',
-            title: 'Form submitted',
-            message: `${existingClient.primaryContactName} submitted ${coreSection.title} for ${existingClient.businessName}.`,
-            actionUrl: `/clients/${assignment.clientId}`,
-            sourceType: 'form_assignment',
-            sourceId: assignment.id,
-            clientId: assignment.clientId,
-            submissionId: submission.id,
-            isDemo: assignment.isDemo,
-          })),
-          skipDuplicates: true,
-        });
-      }
       await tx.cfIntakeSubmissionSnapshot.create({
         data: {
           organizationId: assignment.organizationId,
@@ -669,7 +652,7 @@ export class PublicFormService {
           timestamp: now,
         },
       });
-      return result;
+      return { result, submissionId: submission.id };
     }, {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       maxWait: 5_000,
@@ -678,7 +661,18 @@ export class PublicFormService {
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        return await execute();
+        const committed = await execute();
+        await this.createSubmissionNotifications({
+          organizationId: assignment.organizationId,
+          assignmentId: assignment.id,
+          clientId: assignment.clientId,
+          submissionId: committed.submissionId,
+          clientName: existingClient.primaryContactName,
+          businessName: existingClient.businessName,
+          formTitle: coreSection.title,
+          isDemo: assignment.isDemo,
+        });
+        return committed.result;
       } catch (error) {
         const retryable = error instanceof Prisma.PrismaClientKnownRequestError
           && (error.code === 'P2002' || error.code === 'P2034');
@@ -695,6 +689,47 @@ export class PublicFormService {
     }
 
     throw new BadRequestException('Unable to submit the form.');
+  }
+
+  private async createSubmissionNotifications(input: {
+    organizationId: string;
+    assignmentId: string;
+    clientId: string;
+    submissionId: string;
+    clientName: string;
+    businessName: string;
+    formTitle: string;
+    isDemo: boolean;
+  }) {
+    try {
+      const recipients = await this.prisma.adminUser.findMany({
+        where: { organizationId: input.organizationId, isActive: true },
+        select: { id: true },
+      });
+      if (recipients.length === 0) return;
+
+      await this.prisma.cfNotification.createMany({
+        data: recipients.map(({ id: recipientAdminId }) => ({
+          organizationId: input.organizationId,
+          recipientAdminId,
+          type: 'form_submitted',
+          title: 'Form submitted',
+          message: `${input.clientName} submitted ${input.formTitle} for ${input.businessName}.`,
+          actionUrl: `/clients/${input.clientId}`,
+          sourceType: 'form_assignment',
+          sourceId: input.assignmentId,
+          clientId: input.clientId,
+          submissionId: input.submissionId,
+          isDemo: input.isDemo,
+        })),
+        skipDuplicates: true,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Submission ${input.submissionId} committed, but notifications could not be persisted for assignment ${input.assignmentId}.`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
   }
 
   private async findSubmissionReplay(

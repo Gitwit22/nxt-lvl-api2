@@ -3,7 +3,6 @@ import { compare } from 'bcrypt';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 import { Prisma } from '../../generated/clientflow';
 import type { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
-import type { PrismaService } from '../../prisma/prisma.service';
 import type { NotificationsService } from '../notifications/notifications.service';
 import type { FilesService } from '../files/files.service';
 import { ClientflowService } from './clientflow.service';
@@ -34,7 +33,6 @@ describe('ClientflowService.getProgramDetail', () => {
     return new ClientflowService(
       request,
       prisma as unknown as ClientflowPrismaService,
-      {} as PrismaService,
       {} as NotificationsService,
       {} as FilesService,
     );
@@ -276,7 +274,6 @@ describe('ClientflowService program form linkage', () => {
     const service = new ClientflowService(
       request,
       prisma as unknown as ClientflowPrismaService,
-      {} as PrismaService,
       {} as NotificationsService,
       {} as FilesService,
     );
@@ -379,7 +376,6 @@ describe('ClientflowService form template persistence', () => {
     const service = new ClientflowService(
       request,
       prisma as unknown as ClientflowPrismaService,
-      {} as PrismaService,
       {} as NotificationsService,
       {} as FilesService,
     );
@@ -435,7 +431,6 @@ describe('ClientflowService form template deletion', () => {
     const service = new ClientflowService(
       request,
       prisma as unknown as ClientflowPrismaService,
-      {} as PrismaService,
       {} as NotificationsService,
       {} as FilesService,
     );
@@ -501,7 +496,6 @@ describe('ClientflowService notifications', () => {
     const service = new ClientflowService(
       request,
       prisma as unknown as ClientflowPrismaService,
-      {} as PrismaService,
       {} as NotificationsService,
       {} as FilesService,
     );
@@ -563,8 +557,6 @@ describe('ClientflowService actor attribution', () => {
       cfFormTemplate: { findFirst: jest.fn().mockResolvedValue({ id: 'form-1', programId: null }) },
       cfFormAssignment: { create: jest.fn().mockImplementation(({ data }) => data) },
       cfActivityLog: { create: jest.fn().mockImplementation(({ data }) => data) },
-    };
-    const primaryPrisma = {
       adminUser: {
         findFirst: jest.fn().mockResolvedValue({
           id: 'admin-1',
@@ -579,11 +571,10 @@ describe('ClientflowService actor attribution', () => {
     const service = new ClientflowService(
       request,
       prisma as unknown as ClientflowPrismaService,
-      primaryPrisma as unknown as PrismaService,
       {} as NotificationsService,
       {} as FilesService,
     );
-    return { service, prisma, primaryPrisma };
+    return { service, prisma };
   }
 
   it('attributes new activities to the authenticated admin', async () => {
@@ -617,12 +608,12 @@ describe('ClientflowService actor attribution', () => {
 });
 
 describe('ClientflowService.removeDemo', () => {
-  it('completes the live-mode transition when the partition has no AuditLog table', async () => {
+  it('persists the live-mode transition and audit in the ClientFlow database', async () => {
     const request = {
       headers: { 'x-org-id': 'org-1', 'x-admin-id': 'admin-1' },
       partition: { appUrl: 'https://clientflow.test' },
     } as unknown as PartitionRequest;
-    const primaryPrisma = {
+    const prisma = {
       adminUser: {
         findFirst: jest.fn().mockResolvedValue({
           id: 'admin-1',
@@ -640,7 +631,7 @@ describe('ClientflowService.removeDemo', () => {
         }),
       },
       auditLog: {
-        create: jest.fn().mockRejectedValue({ code: 'P2021' }),
+        create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
       },
       $transaction: jest.fn(async (callback) => callback({
         organization: {
@@ -655,8 +646,7 @@ describe('ClientflowService.removeDemo', () => {
     };
     const service = new ClientflowService(
       request,
-      {} as ClientflowPrismaService,
-      primaryPrisma as unknown as PrismaService,
+      prisma as unknown as ClientflowPrismaService,
       {} as NotificationsService,
       {} as FilesService,
     );
@@ -675,7 +665,7 @@ describe('ClientflowService.removeDemo', () => {
       removed: { clients: 3 },
     });
     expect(deletePersistedDemoData).toHaveBeenCalledWith('org-1');
-    expect(primaryPrisma.auditLog.create).toHaveBeenCalledTimes(1);
+    expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -710,7 +700,6 @@ describe('ClientflowService document storage', () => {
     const service = new ClientflowService(
       request,
       prisma as unknown as ClientflowPrismaService,
-      {} as PrismaService,
       {} as NotificationsService,
       files as unknown as FilesService,
     );

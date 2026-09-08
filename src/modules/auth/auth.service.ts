@@ -320,7 +320,14 @@ export class AuthService {
     const secret = process.env['JWT_SECRET'] ?? '';
     const expiresIn = (process.env['JWT_ACCESS_EXPIRES_IN'] ?? '15m') as unknown as number;
     return sign(
-      { email, roles, sessionId, jti, organizationId },
+      {
+        email,
+        roles,
+        sessionId,
+        jti,
+        organizationId,
+        appPartition: this.request.partition.slug,
+      },
       secret,
       { subject: sub, expiresIn, issuer: this.request.partition.authIssuer },
     );
