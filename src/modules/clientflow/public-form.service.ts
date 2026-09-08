@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, GoneException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CfEnrollmentStatus, Prisma } from '../../generated/clientflow';
 import { createHash, randomBytes } from 'crypto';
 import { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
@@ -28,6 +28,35 @@ type PublicFormSubmissionResult = {
   success: boolean;
   enrollmentIds: string[];
 };
+
+const STALE_FORM_MESSAGE = 'This form has changed. Reload the form to use the latest version.';
+
+function isRenderedSection(value: unknown): value is RenderedSection {
+  if (typeof value !== 'object' || value === null) return false;
+  const section = value as Record<string, unknown>;
+  return (section['kind'] === 'core' || section['kind'] === 'program')
+    && typeof section['templateId'] === 'string'
+    && typeof section['templateVersion'] === 'number'
+    && (section['programId'] === null || typeof section['programId'] === 'string')
+    && typeof section['title'] === 'string'
+    && Array.isArray(section['fields'])
+    && section['fields'].every((field) => (
+      typeof field === 'object'
+      && field !== null
+      && typeof (field as Record<string, unknown>)['id'] === 'string'
+      && typeof (field as Record<string, unknown>)['label'] === 'string'
+      && typeof (field as Record<string, unknown>)['type'] === 'string'
+      && typeof (field as Record<string, unknown>)['required'] === 'boolean'
+      && (
+        (field as Record<string, unknown>)['options'] === undefined
+        || (
+          Array.isArray((field as Record<string, unknown>)['options'])
+          && ((field as Record<string, unknown>)['options'] as unknown[])
+            .every((option) => typeof option === 'string')
+        )
+      )
+    ));
+}
 
 export interface RenderedSection {
   id: string;
@@ -236,6 +265,9 @@ export class PublicFormService {
       where: { secureLinkToken: token },
     });
     if (!assignment) throw new NotFoundException('Form link not found.');
+    if (assignment.status === 'cancelled' || assignment.status === 'expired') {
+      throw new GoneException('This form link is no longer active. Please request a new link.');
+    }
 
     const [
       template,
@@ -438,9 +470,13 @@ export class PublicFormService {
     if (!existingClient) throw new NotFoundException('Client record not found.');
     if (!renderSession) throw new BadRequestException('Form configuration has expired. Reload the form.');
 
-    const renderedSections = renderSession.renderedSections as unknown as RenderedSection[];
+    const renderedSectionsValue: unknown = renderSession.renderedSections;
+    if (!Array.isArray(renderedSectionsValue) || !renderedSectionsValue.every(isRenderedSection)) {
+      throw new ConflictException(STALE_FORM_MESSAGE);
+    }
+    const renderedSections: RenderedSection[] = renderedSectionsValue;
     const coreSection = renderedSections.find((section) => section.kind === 'core');
-    if (!coreSection) throw new BadRequestException('Core intake configuration is missing.');
+    if (!coreSection) throw new ConflictException(STALE_FORM_MESSAGE);
 
     const selectedProgramIds = [...new Set(dto.selectedProgramIds)];
     const selectedProgramSet = new Set(selectedProgramIds);
@@ -457,16 +493,69 @@ export class PublicFormService {
     if (invalidProgramIds.length > 0) {
       throw new BadRequestException('One or more selected programs are unavailable.');
     }
-    const programs = await this.prisma.cfProgram.findMany({
-      where: {
-        organizationId: assignment.organizationId,
-        id: { in: selectedProgramIds },
-        isActive: true,
-      },
-      select: { id: true },
-    });
+    const [currentCoreTemplate, programs, currentProgramTemplates] = await Promise.all([
+      this.prisma.cfFormTemplate.findFirst({
+        where: {
+          id: assignment.formId,
+          organizationId: assignment.organizationId,
+          isActive: true,
+        },
+        select: { id: true, version: true },
+      }),
+      this.prisma.cfProgram.findMany({
+        where: {
+          organizationId: assignment.organizationId,
+          id: { in: selectedProgramIds },
+          isActive: true,
+        },
+        select: { id: true, defaultFormTemplateId: true },
+      }),
+      this.prisma.cfFormTemplate.findMany({
+        where: {
+          organizationId: assignment.organizationId,
+          isActive: true,
+          programId: { in: selectedProgramIds },
+          OR: [
+            { scope: 'program_section' },
+            { scope: 'legacy' },
+          ],
+        },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
+        select: { id: true, programId: true, scope: true, version: true },
+      }),
+    ]);
+    if (
+      !currentCoreTemplate
+      || renderSession.coreTemplateId !== currentCoreTemplate.id
+      || currentCoreTemplate.version !== renderSession.coreTemplateVersion
+      || coreSection.templateId !== currentCoreTemplate.id
+      || coreSection.templateVersion !== currentCoreTemplate.version
+    ) {
+      throw new ConflictException(STALE_FORM_MESSAGE);
+    }
     if (programs.length !== selectedProgramIds.length) {
       throw new BadRequestException('One or more selected programs are inactive.');
+    }
+    for (const program of programs) {
+      const renderedSection = renderedSections.find(
+        (section) => section.kind === 'program' && section.programId === program.id,
+      );
+      const candidates = currentProgramTemplates.filter(
+        (template) => template.programId === program.id,
+      );
+      const currentTemplate = candidates.find(
+        (template) => template.id === program.defaultFormTemplateId,
+      )
+        ?? candidates.find((template) => template.scope === 'program_section')
+        ?? candidates[0];
+      if (
+        !renderedSection
+        || !currentTemplate
+        || renderedSection.templateId !== currentTemplate.id
+        || renderedSection.templateVersion !== currentTemplate.version
+      ) {
+        throw new ConflictException(STALE_FORM_MESSAGE);
+      }
     }
 
     const submittedProgramIds = Object.keys(dto.programResponses);

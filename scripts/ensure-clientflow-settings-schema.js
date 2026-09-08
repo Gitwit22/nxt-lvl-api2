@@ -113,6 +113,10 @@ async function main() {
       ON "CfProgramEnrollment"("organizationId", "lastModifiedByUserId")
     `);
     await clientflow.$executeRawUnsafe(`
+      ALTER TABLE "CfIntakeSubmissionProgram"
+      ADD COLUMN IF NOT EXISTS "responsePayload" JSONB NOT NULL DEFAULT '{}'
+    `);
+    await clientflow.$executeRawUnsafe(`
       ALTER TABLE "CfEnrollmentStatusHistory"
       ADD COLUMN IF NOT EXISTS "changedByDisplayName" TEXT
     `);

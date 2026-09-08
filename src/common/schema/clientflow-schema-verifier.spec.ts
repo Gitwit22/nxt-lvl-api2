@@ -5,6 +5,8 @@ const {
   findMissingClientflowSchema: (columns: Array<{ table_name: string; column_name: string }>) => string[];
   REQUIRED_CLIENTFLOW_SCHEMA: Record<string, string[]>;
 } = require('../../../scripts/ensure-clientflow-settings-schema');
+const fs = require('node:fs');
+const path = require('node:path');
 
 describe('ClientFlow schema verifier', () => {
   const completeSchema = Object.entries(REQUIRED_CLIENTFLOW_SCHEMA).flatMap(
@@ -34,5 +36,15 @@ describe('ClientFlow schema verifier', () => {
       'CfActivityLog.actorUserId',
       'CfNotification.submissionId',
     ]);
+  });
+
+  it('repairs the program response payload required during submission', () => {
+    const script = fs.readFileSync(
+      path.resolve(__dirname, '../../../scripts/ensure-clientflow-settings-schema.js'),
+      'utf8',
+    );
+
+    expect(script).toContain('ALTER TABLE "CfIntakeSubmissionProgram"');
+    expect(script).toContain('ADD COLUMN IF NOT EXISTS "responsePayload" JSONB');
   });
 });

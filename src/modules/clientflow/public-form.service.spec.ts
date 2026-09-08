@@ -114,7 +114,21 @@ describe('PublicFormService.submitPublicForm', () => {
           renderedSections,
         }),
       },
-      cfProgram: { findMany: jest.fn().mockResolvedValue([{ id: 'program-1' }]) },
+      cfFormTemplate: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'form-1', version: 1 }),
+        findMany: jest.fn().mockResolvedValue([{
+          id: 'section-1',
+          programId: 'program-1',
+          scope: 'program_section',
+          version: 1,
+        }]),
+      },
+      cfProgram: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: 'program-1',
+          defaultFormTemplateId: 'section-1',
+        }]),
+      },
       adminUser: {
         findMany: jest.fn().mockResolvedValue([{ id: 'admin-1' }, { id: 'admin-2' }]),
       },
@@ -324,6 +338,43 @@ describe('PublicFormService.submitPublicForm', () => {
     expect(tx.cfFormAssignment.update).toHaveBeenCalled();
   });
 
+  it('replays an identical committed submission without starting another transaction', async () => {
+    const { service, prisma, tx } = setup();
+    const firstResult = await service.submitPublicForm('secure-token', dto);
+    const createdSubmission = tx.cfIntakeSubmission.create.mock.calls[0][0].data;
+    prisma.cfIntakeSubmission.findFirst.mockResolvedValue({
+      formAssignmentId: assignment.id,
+      idempotencyKey: dto.idempotencyKey,
+      requestHash: createdSubmission.requestHash,
+      resultPayload: firstResult,
+    });
+
+    await expect(service.submitPublicForm('secure-token', dto)).resolves.toEqual(firstResult);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a render session whose core template is no longer current', async () => {
+    const { service, prisma } = setup();
+    prisma.cfFormTemplate.findFirst.mockResolvedValue({ id: 'form-1', version: 2 });
+
+    await expect(service.submitPublicForm('secure-token', dto))
+      .rejects.toThrow('This form has changed. Reload the form to use the latest version.');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed legacy rendered sections before starting a transaction', async () => {
+    const { service, prisma } = setup();
+    prisma.cfIntakeRenderSession.findFirst.mockResolvedValue({
+      coreTemplateId: 'form-1',
+      coreTemplateVersion: 1,
+      renderedSections: [{ kind: 'core', templateId: 'form-1', templateVersion: 1 }],
+    });
+
+    await expect(service.submitPublicForm('secure-token', dto))
+      .rejects.toThrow('This form has changed. Reload the form to use the latest version.');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it('still rejects a missing required non-file program answer', async () => {
     const { service, prisma } = setup();
     const missingGrowthGoal = {
@@ -458,6 +509,15 @@ describe('PublicFormService.getPublicForm', () => {
         ],
       }),
     }));
+  });
+
+  it('rejects an expired assignment before creating a render session', async () => {
+    const { service, prisma } = setup([]);
+    prisma.cfFormAssignment.findUnique.mockResolvedValue({ ...assignment, status: 'expired' });
+
+    await expect(service.getPublicForm('secure-token'))
+      .rejects.toThrow('This form link is no longer active. Please request a new link.');
+    expect(prisma.cfIntakeRenderSession.create).not.toHaveBeenCalled();
   });
 
   it('prefers an explicit program section over a legacy template for the same program', async () => {
