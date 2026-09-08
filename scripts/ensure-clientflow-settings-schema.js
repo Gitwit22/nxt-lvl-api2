@@ -14,7 +14,20 @@ const REQUIRED_CLIENTFLOW_SCHEMA = {
   CfIntakeRenderSession: ['configurationToken', 'renderedSections', 'expiresAt'],
   CfIntakeSubmissionSnapshot: ['intakeSubmissionId', 'renderedSections', 'selectedProgramIds'],
   CfIntakeSubmissionProgram: ['intakeSubmissionId', 'programId', 'enrollmentId', 'responsePayload'],
-  CfProgramEnrollment: ['lastModifiedByUserId', 'lastModifiedByDisplayName'],
+  CfProgramEnrollment: [
+    'lastModifiedByUserId',
+    'lastModifiedByDisplayName',
+    'targetCompletionDate',
+    'currentGoalId',
+    'lastProgressUpdate',
+    'clientResponsiveness',
+    'currentBlockers',
+    'riskLevel',
+    'staffProgressNotes',
+    'meetingsAttended',
+    'outcomeAchieved',
+    'finalOutcomeSummary',
+  ],
   CfEnrollmentStatusHistory: ['changedByDisplayName'],
   CfActivityLog: ['actorUserId'],
   CfNotification: [
@@ -67,9 +80,33 @@ async function main() {
       ADD COLUMN IF NOT EXISTS "jobTitle" TEXT
     `);
     await clientflow.$executeRawUnsafe(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'CfClientResponsiveness') THEN
+          CREATE TYPE "CfClientResponsiveness" AS ENUM ('responsive', 'inconsistent', 'unresponsive', 'unknown');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'CfEnrollmentRiskLevel') THEN
+          CREATE TYPE "CfEnrollmentRiskLevel" AS ENUM ('low', 'medium', 'high', 'critical');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'CfOutcomeAchieved') THEN
+          CREATE TYPE "CfOutcomeAchieved" AS ENUM ('yes', 'partial', 'no', 'pending');
+        END IF;
+      END $$
+    `);
+    await clientflow.$executeRawUnsafe(`
       ALTER TABLE "CfProgramEnrollment"
       ADD COLUMN IF NOT EXISTS "lastModifiedByUserId" TEXT,
-      ADD COLUMN IF NOT EXISTS "lastModifiedByDisplayName" TEXT
+      ADD COLUMN IF NOT EXISTS "lastModifiedByDisplayName" TEXT,
+      ADD COLUMN IF NOT EXISTS "targetCompletionDate" TIMESTAMP(3),
+      ADD COLUMN IF NOT EXISTS "currentGoalId" TEXT,
+      ADD COLUMN IF NOT EXISTS "lastProgressUpdate" TIMESTAMP(3),
+      ADD COLUMN IF NOT EXISTS "clientResponsiveness" "CfClientResponsiveness" NOT NULL DEFAULT 'unknown',
+      ADD COLUMN IF NOT EXISTS "currentBlockers" TEXT,
+      ADD COLUMN IF NOT EXISTS "riskLevel" "CfEnrollmentRiskLevel" NOT NULL DEFAULT 'low',
+      ADD COLUMN IF NOT EXISTS "staffProgressNotes" TEXT,
+      ADD COLUMN IF NOT EXISTS "meetingsAttended" INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS "outcomeAchieved" "CfOutcomeAchieved" NOT NULL DEFAULT 'pending',
+      ADD COLUMN IF NOT EXISTS "finalOutcomeSummary" TEXT
     `);
     await clientflow.$executeRawUnsafe(`
       CREATE INDEX IF NOT EXISTS "CfProgramEnrollment_organizationId_lastModifiedByUserId_idx"
