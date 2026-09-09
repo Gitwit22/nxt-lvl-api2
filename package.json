@@ -6,7 +6,7 @@
   "scripts": {
     "build": "npm run prisma:generate && nest build",
     "postinstall": "npm run prisma:generate",
-    "start": "node dist/main",
+    "start": "npm run deploy:prepare && node dist/main",
     "start:prod": "npm run deploy:prepare && node dist/main",
     "deploy:prepare": "node scripts/deploy-prepare.js",
     "start:dev": "nest start --watch",
