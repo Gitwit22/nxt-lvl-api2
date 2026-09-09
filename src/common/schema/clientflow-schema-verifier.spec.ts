@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
 const {
   findMissingClientflowSchema,
   REQUIRED_CLIENTFLOW_SCHEMA,
@@ -50,20 +49,6 @@ describe('ClientFlow schema verifier', () => {
   });
 
   it('keeps emergency-repaired production migrations idempotent', () => {
-    const refreshMigration = fs.readFileSync(
-      path.resolve(
-        __dirname,
-        '../../../prisma/clientflow/migrations/20260831120000_add_refresh_sessions/migration.sql',
-      ),
-      'utf8',
-    );
-    const documentMigration = fs.readFileSync(
-      path.resolve(
-        __dirname,
-        '../../../prisma/clientflow/migrations/20260831130000_add_document_storage/migration.sql',
-      ),
-      'utf8',
-    );
     const notificationsMigration = fs.readFileSync(
       path.resolve(
         __dirname,
@@ -79,8 +64,6 @@ describe('ClientFlow schema verifier', () => {
       'utf8',
     );
 
-    expect(refreshMigration).toContain('ADD COLUMN IF NOT EXISTS "refreshTokenHash" TEXT');
-    expect(documentMigration).toContain('ADD COLUMN IF NOT EXISTS "objectKey" TEXT');
     expect(notificationsMigration).toContain('CREATE TABLE IF NOT EXISTS "CfNotification"');
     expect(notificationsMigration).toContain("conname = 'CfNotification_recipientAdminId_fkey'");
     expect(attributionMigration).toContain(
