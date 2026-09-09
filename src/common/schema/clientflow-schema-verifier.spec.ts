@@ -48,6 +48,16 @@ describe('ClientFlow schema verifier', () => {
     expect(script).toContain('ADD COLUMN IF NOT EXISTS "responsePayload" JSONB');
   });
 
+  it('repairs the primary invitation table required by member listing', () => {
+    const script = fs.readFileSync(
+      path.resolve(__dirname, '../../../scripts/ensure-clientflow-settings-schema.js'),
+      'utf8',
+    );
+
+    expect(script).toContain('CREATE TABLE IF NOT EXISTS "AdminInvitation"');
+    expect(script).toContain("conname = 'AdminInvitation_adminUserId_fkey'");
+  });
+
   it('keeps emergency-repaired production migrations idempotent', () => {
     const notificationsMigration = fs.readFileSync(
       path.resolve(

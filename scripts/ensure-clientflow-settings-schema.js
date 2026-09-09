@@ -253,6 +253,45 @@ async function main() {
       ALTER TABLE "AdminUser"
       ADD COLUMN IF NOT EXISTS "jobTitle" TEXT
     `);
+    await primary.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "AdminInvitation" (
+        "id" TEXT NOT NULL,
+        "adminUserId" TEXT NOT NULL,
+        "tokenHash" TEXT NOT NULL,
+        "expiresAt" TIMESTAMP(3) NOT NULL,
+        "acceptedAt" TIMESTAMP(3),
+        "revokedAt" TIMESTAMP(3),
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "AdminInvitation_pkey" PRIMARY KEY ("id")
+      )
+    `);
+    await primary.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "AdminInvitation_adminUserId_key"
+      ON "AdminInvitation"("adminUserId")
+    `);
+    await primary.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "AdminInvitation_tokenHash_key"
+      ON "AdminInvitation"("tokenHash")
+    `);
+    await primary.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "AdminInvitation_tokenHash_idx"
+      ON "AdminInvitation"("tokenHash")
+    `);
+    await primary.$executeRawUnsafe(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'AdminInvitation_adminUserId_fkey'
+            AND conrelid = '"AdminInvitation"'::regclass
+        ) THEN
+          ALTER TABLE "AdminInvitation"
+          ADD CONSTRAINT "AdminInvitation_adminUserId_fkey"
+          FOREIGN KEY ("adminUserId") REFERENCES "AdminUser"("id")
+          ON DELETE CASCADE ON UPDATE CASCADE;
+        END IF;
+      END $$
+    `);
 
     const primaryColumns = await primary.$queryRawUnsafe(`
       SELECT table_name, column_name
@@ -267,6 +306,15 @@ async function main() {
     `);
     if (primaryColumns.length !== 4) {
       throw new Error('Primary settings schema could not be verified.');
+    }
+    const primaryTables = await primary.$queryRawUnsafe(`
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = current_schema()
+        AND table_name = 'AdminInvitation'
+    `);
+    if (primaryTables.length !== 1) {
+      throw new Error('Primary member schema could not be verified.');
     }
 
     console.log('ClientFlow settings, member, and notification schema verified.');
