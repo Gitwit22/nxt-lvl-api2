@@ -1,4 +1,4 @@
-CREATE TABLE "CfNotification" (
+CREATE TABLE IF NOT EXISTS "CfNotification" (
   "id" TEXT NOT NULL,
   "organizationId" TEXT NOT NULL,
   "recipientAdminId" TEXT NOT NULL,
@@ -17,18 +17,28 @@ CREATE TABLE "CfNotification" (
   CONSTRAINT "CfNotification_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX "CfNotification_recipientAdminId_sourceType_sourceId_key"
+CREATE UNIQUE INDEX IF NOT EXISTS "CfNotification_recipientAdminId_sourceType_sourceId_key"
 ON "CfNotification"("recipientAdminId", "sourceType", "sourceId");
 
-CREATE INDEX "CfNotification_organizationId_recipientAdminId_createdAt_idx"
+CREATE INDEX IF NOT EXISTS "CfNotification_organizationId_recipientAdminId_createdAt_idx"
 ON "CfNotification"("organizationId", "recipientAdminId", "createdAt");
 
-CREATE INDEX "CfNotification_organizationId_recipientAdminId_readAt_idx"
+CREATE INDEX IF NOT EXISTS "CfNotification_organizationId_recipientAdminId_readAt_idx"
 ON "CfNotification"("organizationId", "recipientAdminId", "readAt");
 
-CREATE INDEX "CfNotification_organizationId_isDemo_idx"
+CREATE INDEX IF NOT EXISTS "CfNotification_organizationId_isDemo_idx"
 ON "CfNotification"("organizationId", "isDemo");
 
-ALTER TABLE "CfNotification"
-ADD CONSTRAINT "CfNotification_recipientAdminId_fkey"
-FOREIGN KEY ("recipientAdminId") REFERENCES "AdminUser"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'CfNotification_recipientAdminId_fkey'
+      AND conrelid = '"CfNotification"'::regclass
+  ) THEN
+    ALTER TABLE "CfNotification"
+    ADD CONSTRAINT "CfNotification_recipientAdminId_fkey"
+    FOREIGN KEY ("recipientAdminId") REFERENCES "AdminUser"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;

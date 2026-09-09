@@ -48,6 +48,17 @@ const REQUIRED_CLIENTFLOW_SCHEMA = {
   ],
 };
 
+const REQUIRED_CLIENTFLOW_INDEXES = [
+  'CfNotification_recipientAdminId_sourceType_sourceId_key',
+  'CfNotification_organizationId_recipientAdminId_createdAt_idx',
+  'CfNotification_organizationId_recipientAdminId_readAt_idx',
+  'CfNotification_organizationId_isDemo_idx',
+];
+
+const REQUIRED_CLIENTFLOW_CONSTRAINTS = [
+  'CfNotification_recipientAdminId_fkey',
+];
+
 function findMissingClientflowSchema(columns) {
   const available = new Set(columns.map(({ table_name, column_name }) => `${table_name}.${column_name}`));
   return Object.entries(REQUIRED_CLIENTFLOW_SCHEMA).flatMap(([tableName, columnNames]) =>
@@ -57,24 +68,24 @@ function findMissingClientflowSchema(columns) {
   );
 }
 
+function findMissingNames(required, rows, property) {
+  const available = new Set(rows.map((row) => row[property]));
+  return required.filter((name) => !available.has(name));
+}
+
 async function main() {
+  if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required.');
+  if (!process.env.CLIENTFLOW_DATABASE_URL) throw new Error('CLIENTFLOW_DATABASE_URL is required.');
+  if (process.env.DATABASE_URL === process.env.CLIENTFLOW_DATABASE_URL) {
+    throw new Error('DATABASE_URL and CLIENTFLOW_DATABASE_URL must target different databases.');
+  }
+
   const primary = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL });
   const clientflow = new ClientflowPrismaClient({
     datasourceUrl: process.env.CLIENTFLOW_DATABASE_URL,
   });
 
   try {
-    await primary.$executeRawUnsafe(`
-      ALTER TABLE "Organization"
-      ADD COLUMN IF NOT EXISTS "liveMode" BOOLEAN NOT NULL DEFAULT false,
-      ADD COLUMN IF NOT EXISTS "demoRemovedAt" TIMESTAMP(3),
-      ADD COLUMN IF NOT EXISTS "principalAdminId" TEXT
-    `);
-    await primary.$executeRawUnsafe(`
-      ALTER TABLE "AdminUser"
-      ADD COLUMN IF NOT EXISTS "jobTitle" TEXT
-    `);
-
     await clientflow.$executeRawUnsafe(`
       ALTER TABLE "AdminUser"
       ADD COLUMN IF NOT EXISTS "jobTitle" TEXT
@@ -159,18 +170,26 @@ async function main() {
       CREATE INDEX IF NOT EXISTS "CfNotification_organizationId_recipientAdminId_readAt_idx"
       ON "CfNotification"("organizationId", "recipientAdminId", "readAt")
     `);
-
-    const primaryColumns = await primary.$queryRawUnsafe(`
-      SELECT table_name, column_name
-      FROM information_schema.columns
-      WHERE table_schema = current_schema()
-        AND (table_name, column_name) IN (
-          ('Organization', 'liveMode'),
-          ('Organization', 'demoRemovedAt'),
-          ('Organization', 'principalAdminId'),
-          ('AdminUser', 'jobTitle')
-        )
+    await clientflow.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "CfNotification_organizationId_isDemo_idx"
+      ON "CfNotification"("organizationId", "isDemo")
     `);
+    await clientflow.$executeRawUnsafe(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'CfNotification_recipientAdminId_fkey'
+            AND conrelid = '"CfNotification"'::regclass
+        ) THEN
+          ALTER TABLE "CfNotification"
+          ADD CONSTRAINT "CfNotification_recipientAdminId_fkey"
+          FOREIGN KEY ("recipientAdminId") REFERENCES "AdminUser"("id")
+          ON DELETE CASCADE ON UPDATE CASCADE;
+        END IF;
+      END $$
+    `);
+
     const clientflowColumns = await clientflow.$queryRawUnsafe(`
       SELECT table_name, column_name
       FROM information_schema.columns
@@ -187,13 +206,67 @@ async function main() {
           'CfNotification'
         )
     `);
+    const clientflowIndexes = await clientflow.$queryRawUnsafe(`
+      SELECT indexname
+      FROM pg_indexes
+      WHERE schemaname = current_schema()
+        AND tablename = 'CfNotification'
+    `);
+    const clientflowConstraints = await clientflow.$queryRawUnsafe(`
+      SELECT conname
+      FROM pg_constraint
+      WHERE conrelid = '"CfNotification"'::regclass
+    `);
 
     const missingClientflowSchema = findMissingClientflowSchema(clientflowColumns);
-    if (primaryColumns.length !== 4 || missingClientflowSchema.length > 0) {
-      const details = missingClientflowSchema.length > 0
-        ? ` Missing ClientFlow schema: ${missingClientflowSchema.join(', ')}.`
-        : '';
-      throw new Error(`ClientFlow settings schema could not be verified.${details}`);
+    const missingClientflowIndexes = findMissingNames(
+      REQUIRED_CLIENTFLOW_INDEXES,
+      clientflowIndexes,
+      'indexname',
+    );
+    const missingClientflowConstraints = findMissingNames(
+      REQUIRED_CLIENTFLOW_CONSTRAINTS,
+      clientflowConstraints,
+      'conname',
+    );
+    if (
+      missingClientflowSchema.length > 0
+      || missingClientflowIndexes.length > 0
+      || missingClientflowConstraints.length > 0
+    ) {
+      throw new Error([
+        ...missingClientflowSchema,
+        ...missingClientflowIndexes,
+        ...missingClientflowConstraints,
+      ].join(', '));
+    }
+
+    console.log('ClientFlow submission schema repaired and verified.');
+
+    await primary.$executeRawUnsafe(`
+      ALTER TABLE "Organization"
+      ADD COLUMN IF NOT EXISTS "liveMode" BOOLEAN NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS "demoRemovedAt" TIMESTAMP(3),
+      ADD COLUMN IF NOT EXISTS "principalAdminId" TEXT
+    `);
+    await primary.$executeRawUnsafe(`
+      ALTER TABLE "AdminUser"
+      ADD COLUMN IF NOT EXISTS "jobTitle" TEXT
+    `);
+
+    const primaryColumns = await primary.$queryRawUnsafe(`
+      SELECT table_name, column_name
+      FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND (table_name, column_name) IN (
+          ('Organization', 'liveMode'),
+          ('Organization', 'demoRemovedAt'),
+          ('Organization', 'principalAdminId'),
+          ('AdminUser', 'jobTitle')
+        )
+    `);
+    if (primaryColumns.length !== 4) {
+      throw new Error('Primary settings schema could not be verified.');
     }
 
     console.log('ClientFlow settings, member, and notification schema verified.');
@@ -209,4 +282,11 @@ if (require.main === module) {
   });
 }
 
-module.exports = { findMissingClientflowSchema, main, REQUIRED_CLIENTFLOW_SCHEMA };
+module.exports = {
+  findMissingClientflowSchema,
+  findMissingNames,
+  main,
+  REQUIRED_CLIENTFLOW_SCHEMA,
+  REQUIRED_CLIENTFLOW_INDEXES,
+  REQUIRED_CLIENTFLOW_CONSTRAINTS,
+};
