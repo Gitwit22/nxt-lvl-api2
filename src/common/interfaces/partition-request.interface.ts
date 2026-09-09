@@ -3,4 +3,5 @@ import type { PartitionConfig } from '../services/partition.service';
 
 export interface PartitionRequest extends Request {
   partition: PartitionConfig;
+  requestId?: string;
 }

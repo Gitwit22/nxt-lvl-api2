@@ -4,8 +4,10 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import type { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
+import { randomUUID } from 'node:crypto';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import type { PartitionRequest } from './common/interfaces/partition-request.interface';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { PartitionService } from './common/services/partition.service';
 
@@ -46,6 +48,16 @@ async function bootstrap() {
     }),
   );
   app.use(cookieParser());
+  app.use((request: Request, response: Response, next: NextFunction) => {
+    const suppliedRequestId = request.header('x-request-id')?.trim();
+    const requestId = suppliedRequestId && /^[A-Za-z0-9._-]{1,100}$/.test(suppliedRequestId)
+      ? suppliedRequestId
+      : randomUUID();
+
+    (request as PartitionRequest).requestId = requestId;
+    response.setHeader('X-Request-Id', requestId);
+    next();
+  });
 
   const corsOrigins = [
     ...(process.env.CORS_ORIGIN ?? '').split(','),
@@ -68,7 +80,8 @@ async function bootstrap() {
     },
     credentials: true,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-App-Partition'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-App-Partition', 'X-Request-Id'],
+    exposedHeaders: ['X-Request-Id'],
   });
 
   const exactCookieOrigins = corsOrigins

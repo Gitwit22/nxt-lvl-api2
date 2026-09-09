@@ -318,6 +318,30 @@ describe('PublicFormService.submitPublicForm', () => {
     });
   });
 
+  it('allows an archived client to submit without restoring the client', async () => {
+    const { service, prisma, tx } = setup();
+    prisma.cfClient.findFirst.mockResolvedValue({
+      ...client,
+      isArchived: true,
+      archivedAt: new Date('2026-08-01T00:00:00.000Z'),
+    });
+
+    await expect(service.submitPublicForm('secure-token', dto)).resolves.toEqual({
+      success: true,
+      enrollmentIds: ['enrollment-1'],
+    });
+
+    expect(tx.cfFormAssignment.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'submitted' }),
+    }));
+    expect(tx.cfClient.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.not.objectContaining({
+        isArchived: expect.anything(),
+        archivedAt: expect.anything(),
+      }),
+    }));
+  });
+
   it('accepts a committed submission when notification persistence fails', async () => {
     const { service, prisma, tx } = setup();
     const schemaError = new Prisma.PrismaClientKnownRequestError(
