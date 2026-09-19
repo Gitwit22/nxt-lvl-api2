@@ -166,6 +166,9 @@ describe('ClientflowService.getProgramDetail', () => {
     expect(prisma.cfProgram.findFirst).toHaveBeenCalledWith({
       where: { id: 'program-1', organizationId: 'org-1' },
     });
+    expect(prisma.cfClient.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { organizationId: 'org-1', id: { in: ['client-1'] }, isArchived: false },
+    }));
   });
 
   it('returns empty optional sections for an enrollment without replies or progress records', async () => {
@@ -242,6 +245,74 @@ describe('ClientflowService.getProgramDetail', () => {
     await expect(createService().getProgramDetail('program-other'))
       .rejects.toBeInstanceOf(NotFoundException);
     expect(prisma.cfProgramEnrollment.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('ClientflowService client archive cascade', () => {
+  const request = {
+    headers: { 'x-org-id': 'org-1' },
+    partition: { appUrl: 'https://clientflow.test' },
+  } as unknown as PartitionRequest;
+
+  function setup(existing: { isArchived: boolean; archivedAt: Date | null }) {
+    const tx = {
+      cfClient: {
+        update: jest.fn().mockImplementation(async ({ data }) => ({
+          id: 'client-1',
+          ...existing,
+          ...data,
+        })),
+      },
+      cfProgramEnrollment: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
+    };
+    const prisma = {
+      cfClient: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'client-1', ...existing }),
+      },
+      $transaction: jest.fn().mockImplementation(async (callback) => callback(tx)),
+    };
+    const service = new ClientflowService(
+      request,
+      prisma as unknown as ClientflowPrismaService,
+      {} as NotificationsService,
+      {} as FilesService,
+    );
+    return { service, tx };
+  }
+
+  it('archives every active program enrollment with the client timestamp', async () => {
+    const { service, tx } = setup({ isArchived: false, archivedAt: null });
+    const archivedAt = '2026-09-08T12:00:00.000Z';
+
+    await service.updateClient('client-1', { isArchived: true, archivedAt });
+
+    expect(tx.cfProgramEnrollment.updateMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', clientId: 'client-1', isArchived: false },
+      data: { isArchived: true, archivedAt: new Date(archivedAt) },
+    });
+    expect(tx.cfClient.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ isArchived: true, archivedAt: new Date(archivedAt) }),
+    }));
+  });
+
+  it('restores only enrollments archived with the client', async () => {
+    const archivedAt = new Date('2026-09-08T12:00:00.000Z');
+    const { service, tx } = setup({ isArchived: true, archivedAt });
+
+    await service.updateClient('client-1', { isArchived: false });
+
+    expect(tx.cfProgramEnrollment.updateMany).toHaveBeenCalledWith({
+      where: {
+        organizationId: 'org-1',
+        clientId: 'client-1',
+        isArchived: true,
+        archivedAt,
+      },
+      data: { isArchived: false, archivedAt: null },
+    });
+    expect(tx.cfClient.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ isArchived: false, archivedAt: null }),
+    }));
   });
 });
 

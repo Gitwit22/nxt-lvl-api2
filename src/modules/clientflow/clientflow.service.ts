@@ -309,9 +309,33 @@ export class ClientflowService {
     const existing = await this.prisma.cfClient.findFirst({ where: { id, organizationId: orgId } });
     if (!existing) throw new NotFoundException('Client not found.');
 
-    return this.prisma.cfClient.update({
-      where: { id },
-      data: {
+    const isArchiving = dto.isArchived === true && !existing.isArchived;
+    const isRestoring = dto.isArchived === false && existing.isArchived;
+    const archiveTimestamp = isArchiving
+      ? (dto.archivedAt ? new Date(dto.archivedAt) : new Date())
+      : null;
+
+    return this.prisma.$transaction(async (tx) => {
+      if (isArchiving) {
+        await tx.cfProgramEnrollment.updateMany({
+          where: { organizationId: orgId, clientId: id, isArchived: false },
+          data: { isArchived: true, archivedAt: archiveTimestamp },
+        });
+      } else if (isRestoring && existing.archivedAt) {
+        await tx.cfProgramEnrollment.updateMany({
+          where: {
+            organizationId: orgId,
+            clientId: id,
+            isArchived: true,
+            archivedAt: existing.archivedAt,
+          },
+          data: { isArchived: false, archivedAt: null },
+        });
+      }
+
+      return tx.cfClient.update({
+        where: { id },
+        data: {
         ...(dto.businessName !== undefined && { businessName: dto.businessName }),
         ...(dto.primaryContactName !== undefined && { primaryContactName: dto.primaryContactName }),
         ...(dto.email !== undefined && { email: dto.email }),
@@ -334,14 +358,19 @@ export class ClientflowService {
         ...(dto.isArchived !== undefined && { isArchived: dto.isArchived }),
         ...(dto.archiveReason !== undefined && { archiveReason: dto.archiveReason }),
         ...(dto.finalStatus !== undefined && { finalStatus: dto.finalStatus }),
-        ...(dto.archivedAt !== undefined && {
-          archivedAt: dto.archivedAt ? new Date(dto.archivedAt) : null,
-        }),
+        ...(isArchiving
+          ? { archivedAt: archiveTimestamp }
+          : isRestoring
+            ? { archivedAt: null }
+            : dto.archivedAt !== undefined
+              ? { archivedAt: dto.archivedAt ? new Date(dto.archivedAt) : null }
+              : {}),
         ...(dto.intake !== undefined && { intake: dto.intake as Prisma.InputJsonValue }),
         ...('snapchat' in dto && {
           snapchat: dto.snapchat ? (dto.snapchat as Prisma.InputJsonValue) : Prisma.JsonNull,
         }),
-      },
+        },
+      });
     });
   }
 
@@ -439,7 +468,7 @@ export class ClientflowService {
 
     const [clients, intakeLinks, assignments, terms, contracts, monitoring, statusHistory] = await Promise.all([
       this.prisma.cfClient.findMany({
-        where: { organizationId: orgId, id: { in: clientIds } },
+        where: { organizationId: orgId, id: { in: clientIds }, isArchived: false },
         select: {
           id: true,
           businessName: true,
