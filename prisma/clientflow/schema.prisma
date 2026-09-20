@@ -323,6 +323,7 @@ model CfFormAssignment {
   recipientPhone   String?
   status           String    @default("draft")
   dueAt            DateTime?
+  expiresAt        DateTime?
   sentAt           DateTime?
   openedAt         DateTime?
   startedAt        DateTime?
@@ -424,22 +425,36 @@ model CfDocument {
 }
 
 model CfCommunication {
-  id             String   @id @default(cuid())
-  organizationId String
-  clientId       String
-  enrollmentId   String?
-  type           String
-  direction      String
-  subject        String
-  notes          String   @default("")
-  date           DateTime
-  staffMember    String
-  isDemo         Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id               String    @id @default(cuid())
+  organizationId   String
+  clientId         String
+  enrollmentId     String?
+  eventId           String?   @unique
+  formAssignmentId String?
+  formId            String?
+  recipientEmail    String?
+  channel           String?
+  provider          String?
+  status            String?
+  requestedAt       DateTime?
+  sentAt            DateTime?
+  failedAt          DateTime?
+  errorCode         String?
+  createdByUserId   String?
+  type               String
+  direction          String
+  subject            String
+  notes              String    @default("")
+  date               DateTime
+  staffMember        String
+  isDemo             Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([organizationId, isDemo])
   @@index([organizationId, clientId])
+  @@index([organizationId, status])
+  @@index([organizationId, formAssignmentId])
   @@index([enrollmentId])
 }
 

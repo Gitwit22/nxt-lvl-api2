@@ -30,6 +30,11 @@ export const environmentSchema = z.object({
   EMAIL_REPLY_TO: z.string().optional(),
   EMAIL_LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).optional(),
   APP_URL: z.string().optional(),
+  N8N_FORM_EMAIL_ENABLED: z.enum(['true', 'false']).default('false'),
+  N8N_FORM_EMAIL_WEBHOOK_URL: z.string().url().optional(),
+  N8N_CLIENTFLOW_SECRET: z.string().min(1).optional(),
+  N8N_FORM_EMAIL_BEARER_TOKEN: z.string().min(1).optional(),
+  N8N_FORM_EMAIL_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
 }).superRefine((config, context) => {
   const primaryTarget = databaseTarget(config.DATABASE_URL);
   const clientflowTarget = databaseTarget(config.CLIENTFLOW_DATABASE_URL);
@@ -54,6 +59,32 @@ export const environmentSchema = z.object({
       path: ['CLIENTFLOW_DATABASE_URL'],
       message: 'CLIENTFLOW_DATABASE_URL must target a different database than DATABASE_URL.',
     });
+  }
+  if (
+    config.NODE_ENV === 'production'
+    && config.N8N_FORM_EMAIL_WEBHOOK_URL
+    && !config.N8N_FORM_EMAIL_WEBHOOK_URL.startsWith('https://')
+  ) {
+    context.addIssue({
+      code: 'custom',
+      path: ['N8N_FORM_EMAIL_WEBHOOK_URL'],
+      message: 'N8N_FORM_EMAIL_WEBHOOK_URL must use HTTPS in production.',
+    });
+  }
+  if (config.N8N_FORM_EMAIL_ENABLED === 'true') {
+    for (const key of [
+      'N8N_FORM_EMAIL_WEBHOOK_URL',
+      'N8N_CLIENTFLOW_SECRET',
+      'N8N_FORM_EMAIL_BEARER_TOKEN',
+    ] as const) {
+      if (!config[key]) {
+        context.addIssue({
+          code: 'custom',
+          path: [key],
+          message: `${key} is required when N8N_FORM_EMAIL_ENABLED is true.`,
+        });
+      }
+    }
   }
 });
 

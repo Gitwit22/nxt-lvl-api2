@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, Scope, UnauthorizedException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Scope, UnauthorizedException } from '@nestjs/common';
 import { REQUEST } from '@nestjs/core';
 import { CfEnrollmentMonitoring, Prisma } from '../../generated/clientflow';
 import { compare } from 'bcrypt';
@@ -14,7 +14,10 @@ import { CreateCfContractDto, UpdateCfContractDto } from './dto/cf-contract.dto'
 import { CreateCfDocumentUploadDto, CreateCfCommunicationDto, CreateCfFinalReportDto, CreateCfActivityDto } from './dto/cf-records.dto';
 import { CreateCfFormTemplateDto, UpdateCfFormTemplateDto } from './dto/cf-form-template.dto';
 import { TransitionToLiveModeDto } from './dto/transition-to-live-mode.dto';
-import { NotificationsService } from '../notifications/notifications.service';
+import {
+  FormEmailDeliveryError,
+  FormEmailDeliveryService,
+} from './form-email-delivery.service';
 import {
   canonicalFieldKey,
   MappableFormField,
@@ -129,6 +132,32 @@ function jsonRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function formLinkExpiration(dueDate?: string): Date | null {
+  if (!dueDate) return null;
+  const parsed = new Date(dueDate);
+  if (Number.isNaN(parsed.getTime())) throw new BadRequestException('Due date is invalid.');
+  parsed.setUTCHours(23, 59, 59, 999);
+  return parsed;
+}
+
+function assertPublicFormUrl(value: string): void {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new BadRequestException('Secure form link is invalid.');
+  }
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new BadRequestException('Secure form link is invalid.');
+  }
+  if (
+    process.env['NODE_ENV'] === 'production'
+    && (url.protocol !== 'https:' || ['localhost', '127.0.0.1'].includes(url.hostname))
+  ) {
+    throw new BadRequestException('Secure form link must use a public HTTPS URL.');
+  }
+}
+
 function ignoreMissingMonitoringTable(error: unknown): CfEnrollmentMonitoring[] {
   if (isMissingTableError(error)) {
     return [];
@@ -184,7 +213,7 @@ export class ClientflowService {
   constructor(
     @Inject(REQUEST) private readonly request: PartitionRequest,
     private readonly prisma: ClientflowPrismaService,
-    private readonly notifications: NotificationsService,
+    private readonly formEmailDelivery: FormEmailDeliveryService,
     private readonly files: FilesService,
   ) {}
 
@@ -890,8 +919,39 @@ export class ClientflowService {
       await this.verifyEnrollmentScope(dto.enrollmentId, dto.clientId, form.programId, orgId);
     }
 
+    const expiresAt = formLinkExpiration(dto.dueDate);
+    if (dto.completionMethod === 'secure_link' && dto.deliveryMethod === 'email') {
+      const reusable = await this.prisma.cfFormAssignment.findFirst({
+        where: {
+          organizationId: orgId,
+          clientId: dto.clientId,
+          enrollmentId: dto.enrollmentId ?? null,
+          formId: dto.formId,
+          recipientEmail: dto.recipientEmail ?? null,
+          completionMethod: 'secure_link',
+          deliveryMethod: 'email',
+          status: { in: ['draft', 'delivery_failed'] },
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        },
+        orderBy: { updatedAt: 'desc' },
+      });
+      if (reusable?.secureLink && reusable.secureLinkToken) {
+        return this.prisma.cfFormAssignment.update({
+          where: { id: reusable.id },
+          data: {
+            assignedUserId: dto.assignedUserId ?? null,
+            dueDate: dto.dueDate,
+            expiresAt,
+            status: 'draft',
+            isDemo: dto.isDemo ?? reusable.isDemo,
+          },
+        });
+      }
+    }
+
     const token = randomBytes(32).toString('hex');
     const secureLink = `${this.request.partition.appUrl}/s/${token}`;
+    assertPublicFormUrl(secureLink);
     return this.prisma.cfFormAssignment.create({
       data: {
         organizationId: orgId,
@@ -905,6 +965,7 @@ export class ClientflowService {
         recipientPhone: dto.recipientPhone ?? null,
         status: 'draft',
         dueDate: dto.dueDate,
+        expiresAt,
         secureLink,
         secureLinkToken: token,
         createdByUserId: actor.id,
@@ -916,11 +977,20 @@ export class ClientflowService {
 
   async sendFormAssignment(id: string, dto: { personalMessage?: string }) {
     const orgId = await this.getOrgId();
+    const actor = await this.getAuthenticatedActor(orgId);
     const assignment = await this.prisma.cfFormAssignment.findFirst({
       where: { id, organizationId: orgId },
     });
     if (!assignment) throw new NotFoundException('Form assignment not found.');
     if (!assignment.secureLink) throw new NotFoundException('Secure form link not found.');
+    assertPublicFormUrl(assignment.secureLink);
+    if (assignment.expiresAt && assignment.expiresAt <= new Date()) {
+      await this.prisma.cfFormAssignment.update({
+        where: { id: assignment.id },
+        data: { status: 'expired' },
+      });
+      throw new BadRequestException('This secure form link has expired. Create a new assignment.');
+    }
 
     const [client, form] = await Promise.all([
       this.prisma.cfClient.findFirst({ where: { id: assignment.clientId, organizationId: orgId } }),
@@ -929,27 +999,158 @@ export class ClientflowService {
     if (!client) throw new NotFoundException('Client not found.');
     if (!form) throw new NotFoundException('Form template not found.');
 
+    const recipientEmail = (assignment.recipientEmail ?? client.email).trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
+      throw new BadRequestException('Recipient email is invalid.');
+    }
+
     const program = form.programId
       ? await this.prisma.cfProgram.findFirst({
           where: { id: form.programId, organizationId: orgId },
         })
       : null;
-    await this.notifications.sendFormLink({
-      to: assignment.recipientEmail ?? client.email,
-      contactName: client.primaryContactName,
-      formName: form.name,
-      programName: program?.name ?? 'EA Management Program',
-      dueDate: assignment.dueDate
-        ? new Date(assignment.dueDate).toLocaleDateString('en-US')
-        : 'As soon as possible',
-      secureLink: assignment.secureLink,
-      personalMessage: dto.personalMessage,
+    const eventId = `evt_${randomUUID()}`;
+    const requestedAt = new Date();
+    const provider = this.formEmailDelivery.provider;
+    const communication = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.cfFormAssignment.updateMany({
+        where: {
+          id: assignment.id,
+          organizationId: orgId,
+          status: { in: ['draft', 'delivery_failed'] },
+        },
+        data: { status: 'sending' },
+      });
+      if (claimed.count !== 1) {
+        throw new ConflictException('This form email is already sending or has been sent.');
+      }
+      const pending = await tx.cfCommunication.create({
+        data: {
+          organizationId: orgId,
+          clientId: client.id,
+          enrollmentId: assignment.enrollmentId,
+          eventId,
+          formAssignmentId: assignment.id,
+          formId: form.id,
+          recipientEmail,
+          channel: 'EMAIL',
+          provider,
+          status: 'PENDING',
+          requestedAt,
+          createdByUserId: actor.id,
+          type: 'form_email',
+          direction: 'outbound',
+          subject: `Form email: ${form.name}`,
+          notes: `Delivery requested for assignment ${assignment.id}.`,
+          date: requestedAt,
+          staffMember: actor.displayName,
+          isDemo: assignment.isDemo,
+        },
+      });
+      await tx.cfActivityLog.create({
+        data: {
+          organizationId: orgId,
+          clientId: client.id,
+          enrollmentId: assignment.enrollmentId,
+          actorUserId: actor.id,
+          action: 'FORM_EMAIL_REQUESTED',
+          description: `Form email requested for ${form.name} (${eventId}).`,
+          user: actor.displayName,
+          timestamp: requestedAt,
+          isDemo: assignment.isDemo,
+        },
+      });
+      return pending;
     });
 
-    return this.prisma.cfFormAssignment.update({
-      where: { id: assignment.id },
-      data: { status: 'sent', sentAt: new Date() },
+    let receipt;
+    try {
+      receipt = await this.formEmailDelivery.send({
+        payload: {
+          eventId,
+          eventType: 'form.send',
+          organizationId: orgId,
+          clientId: client.id,
+          clientName: client.primaryContactName,
+          recipientEmail,
+          formId: form.id,
+          formName: form.name,
+          formUrl: assignment.secureLink,
+          expiresAt: assignment.expiresAt?.toISOString() ?? null,
+          sentByUserId: actor.id,
+          ...(dto.personalMessage?.trim()
+            ? { personalMessage: dto.personalMessage.trim() }
+            : {}),
+        },
+        programName: program?.name ?? 'EA Management Program',
+        dueDate: assignment.dueDate
+          ? new Date(assignment.dueDate).toLocaleDateString('en-US')
+          : 'As soon as possible',
+      });
+    } catch (error) {
+      const deliveryError = error instanceof FormEmailDeliveryError
+        ? error
+        : new FormEmailDeliveryError('EMAIL_DELIVERY_FAILED');
+      const failedAt = new Date();
+      await this.prisma.$transaction(async (tx) => {
+        await tx.cfCommunication.update({
+          where: { id: communication.id },
+          data: { status: 'FAILED', failedAt, errorCode: deliveryError.code },
+        });
+        await tx.cfFormAssignment.update({
+          where: { id: assignment.id },
+          data: { status: 'delivery_failed', sentAt: null },
+        });
+        await tx.cfActivityLog.create({
+          data: {
+            organizationId: orgId,
+            clientId: client.id,
+            enrollmentId: assignment.enrollmentId,
+            actorUserId: actor.id,
+            action: 'FORM_EMAIL_FAILED',
+            description: `Form email delivery failed for ${form.name} (${eventId}; ${deliveryError.code}).`,
+            user: actor.displayName,
+            timestamp: failedAt,
+            isDemo: assignment.isDemo,
+          },
+        });
+      });
+      throw new BadGatewayException(deliveryError.message);
+    }
+
+    const sentAssignment = await this.prisma.$transaction(async (tx) => {
+      await tx.cfCommunication.update({
+        where: { id: communication.id },
+        data: { status: 'SENT', provider: receipt.provider, sentAt: receipt.sentAt },
+      });
+      const sent = await tx.cfFormAssignment.update({
+        where: { id: assignment.id },
+        data: { status: 'sent', sentAt: receipt.sentAt },
+      });
+      await tx.cfActivityLog.create({
+        data: {
+          organizationId: orgId,
+          clientId: client.id,
+          enrollmentId: assignment.enrollmentId,
+          actorUserId: actor.id,
+          action: 'FORM_EMAIL_SENT',
+          description: `Form email sent for ${form.name} (${eventId}).`,
+          user: actor.displayName,
+          timestamp: receipt.sentAt,
+          isDemo: assignment.isDemo,
+        },
+      });
+      return sent;
     });
+    return {
+      success: true,
+      status: 'SENT' as const,
+      message: 'Form email sent successfully.',
+      formId: form.id,
+      recipientEmail,
+      sentAt: receipt.sentAt.toISOString(),
+      assignment: sentAssignment,
+    };
   }
 
   async updateFormAssignment(id: string, dto: UpdateCfFormAssignmentDto) {

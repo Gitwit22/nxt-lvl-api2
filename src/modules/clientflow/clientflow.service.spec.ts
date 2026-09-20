@@ -3,7 +3,10 @@ import { compare } from 'bcrypt';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 import { Prisma } from '../../generated/clientflow';
 import type { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
-import type { NotificationsService } from '../notifications/notifications.service';
+import {
+  FormEmailDeliveryError,
+  type FormEmailDeliveryService,
+} from './form-email-delivery.service';
 import type { FilesService } from '../files/files.service';
 import { ClientflowService } from './clientflow.service';
 
@@ -33,7 +36,7 @@ describe('ClientflowService.getProgramDetail', () => {
     return new ClientflowService(
       request,
       prisma as unknown as ClientflowPrismaService,
-      {} as NotificationsService,
+      {} as FormEmailDeliveryService,
       {} as FilesService,
     );
   }
@@ -274,7 +277,7 @@ describe('ClientflowService client archive cascade', () => {
     const service = new ClientflowService(
       request,
       prisma as unknown as ClientflowPrismaService,
-      {} as NotificationsService,
+      {} as FormEmailDeliveryService,
       {} as FilesService,
     );
     return { service, tx };
@@ -345,7 +348,7 @@ describe('ClientflowService program form linkage', () => {
     const service = new ClientflowService(
       request,
       prisma as unknown as ClientflowPrismaService,
-      {} as NotificationsService,
+      {} as FormEmailDeliveryService,
       {} as FilesService,
     );
     return { service, tx };
@@ -420,7 +423,7 @@ describe('ClientflowService form template persistence', () => {
     const service = new ClientflowService(
       request,
       prisma as unknown as ClientflowPrismaService,
-      {} as NotificationsService,
+      {} as FormEmailDeliveryService,
       {} as FilesService,
     );
 
@@ -502,7 +505,7 @@ describe('ClientflowService form template persistence', () => {
     const service = new ClientflowService(
       request,
       prisma as unknown as ClientflowPrismaService,
-      {} as NotificationsService,
+      {} as FormEmailDeliveryService,
       {} as FilesService,
     );
 
@@ -557,7 +560,7 @@ describe('ClientflowService form template deletion', () => {
     const service = new ClientflowService(
       request,
       prisma as unknown as ClientflowPrismaService,
-      {} as NotificationsService,
+      {} as FormEmailDeliveryService,
       {} as FilesService,
     );
     return { service, tx };
@@ -622,7 +625,7 @@ describe('ClientflowService notifications', () => {
     const service = new ClientflowService(
       request,
       prisma as unknown as ClientflowPrismaService,
-      {} as NotificationsService,
+      {} as FormEmailDeliveryService,
       {} as FilesService,
     );
     return { service, prisma };
@@ -697,7 +700,7 @@ describe('ClientflowService actor attribution', () => {
     const service = new ClientflowService(
       request,
       prisma as unknown as ClientflowPrismaService,
-      {} as NotificationsService,
+      {} as FormEmailDeliveryService,
       {} as FilesService,
     );
     return { service, prisma };
@@ -780,7 +783,7 @@ describe('ClientflowService.deleteClient', () => {
     const service = new ClientflowService(
       request,
       prisma as unknown as ClientflowPrismaService,
-      {} as NotificationsService,
+      {} as FormEmailDeliveryService,
       files as unknown as FilesService,
     );
 
@@ -839,7 +842,7 @@ describe('ClientflowService.removeDemo', () => {
     const service = new ClientflowService(
       request,
       prisma as unknown as ClientflowPrismaService,
-      {} as NotificationsService,
+      {} as FormEmailDeliveryService,
       {} as FilesService,
     );
     const deletePersistedDemoData = jest.fn().mockResolvedValue({ clients: 3 });
@@ -892,7 +895,7 @@ describe('ClientflowService document storage', () => {
     const service = new ClientflowService(
       request,
       prisma as unknown as ClientflowPrismaService,
-      {} as NotificationsService,
+      {} as FormEmailDeliveryService,
       files as unknown as FilesService,
     );
     return { files, prisma, service };
@@ -994,5 +997,207 @@ describe('ClientflowService document storage', () => {
       action: 'download',
       bucketName: 'stored-bucket',
     }));
+  });
+});
+
+describe('ClientflowService form email delivery', () => {
+  const request = {
+    headers: { 'x-org-id': 'org-1', 'x-admin-id': 'admin-1' },
+    partition: { appUrl: 'https://clientflow.test' },
+  } as unknown as PartitionRequest;
+  const expiresAt = new Date('2026-09-27T23:59:59.999Z');
+  const assignment = {
+    id: 'assignment-1',
+    organizationId: 'org-1',
+    clientId: 'client-1',
+    enrollmentId: 'enrollment-1',
+    formId: 'form-1',
+    recipientEmail: 'client@example.com',
+    secureLink: 'https://clientflow.test/s/secure-token',
+    secureLinkToken: 'secure-token',
+    dueDate: '2026-09-27',
+    expiresAt,
+    status: 'draft',
+    isDemo: false,
+  };
+
+  function setup(claimCount = 1) {
+    const tx = {
+      cfFormAssignment: {
+        updateMany: jest.fn().mockResolvedValue({ count: claimCount }),
+        update: jest.fn().mockImplementation(({ data }) => ({ ...assignment, ...data })),
+      },
+      cfCommunication: {
+        create: jest.fn().mockImplementation(({ data }) => ({ id: 'communication-1', ...data })),
+        update: jest.fn().mockResolvedValue({ id: 'communication-1' }),
+      },
+      cfActivityLog: { create: jest.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      adminUser: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'admin-1',
+          email: 'admin@example.com',
+          firstName: 'Alex',
+          lastName: 'Admin',
+        }),
+      },
+      cfFormAssignment: {
+        findFirst: jest.fn().mockResolvedValue(assignment),
+        update: jest.fn().mockResolvedValue({ ...assignment, status: 'expired' }),
+      },
+      cfClient: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'client-1',
+          email: 'client@example.com',
+          primaryContactName: 'Jordan Lee',
+        }),
+      },
+      cfFormTemplate: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'form-1',
+          name: 'Master Intake',
+          programId: null,
+        }),
+      },
+      $transaction: jest.fn(async (operation: (transaction: typeof tx) => unknown) => operation(tx)),
+    };
+    const delivery = {
+      provider: 'N8N_GMAIL',
+      send: jest.fn().mockResolvedValue({
+        provider: 'N8N_GMAIL',
+        sentAt: new Date('2026-09-20T18:00:00.000Z'),
+      }),
+    };
+    const service = new ClientflowService(
+      request,
+      prisma as unknown as ClientflowPrismaService,
+      delivery as unknown as FormEmailDeliveryService,
+      {} as FilesService,
+    );
+    return { service, prisma, tx, delivery };
+  }
+
+  it('uses one event ID and records PENDING before transitioning to SENT', async () => {
+    const { service, tx, delivery } = setup();
+
+    await expect(service.sendFormAssignment('assignment-1', {
+      personalMessage: ' Please complete this form. ',
+    })).resolves.toMatchObject({
+      success: true,
+      status: 'SENT',
+      recipientEmail: 'client@example.com',
+      sentAt: '2026-09-20T18:00:00.000Z',
+    });
+
+    const pendingData = tx.cfCommunication.create.mock.calls[0][0].data;
+    const outgoingPayload = delivery.send.mock.calls[0][0].payload;
+    expect(pendingData).toMatchObject({
+      eventId: expect.stringMatching(/^evt_/),
+      status: 'PENDING',
+      provider: 'N8N_GMAIL',
+    });
+    expect(outgoingPayload).toMatchObject({
+      eventId: pendingData.eventId,
+      formUrl: assignment.secureLink,
+      expiresAt: expiresAt.toISOString(),
+      sentByUserId: 'admin-1',
+      personalMessage: 'Please complete this form.',
+    });
+    expect(tx.cfCommunication.update).toHaveBeenCalledWith({
+      where: { id: 'communication-1' },
+      data: {
+        status: 'SENT',
+        provider: 'N8N_GMAIL',
+        sentAt: new Date('2026-09-20T18:00:00.000Z'),
+      },
+    });
+    expect(tx.cfFormAssignment.update).toHaveBeenCalledWith({
+      where: { id: 'assignment-1' },
+      data: { status: 'sent', sentAt: new Date('2026-09-20T18:00:00.000Z') },
+    });
+    expect(tx.cfActivityLog.create.mock.calls.map(([call]) => call.data.action))
+      .toEqual(['FORM_EMAIL_REQUESTED', 'FORM_EMAIL_SENT']);
+  });
+
+  it('records FAILED and never marks the assignment sent when delivery is unconfirmed', async () => {
+    const { service, tx, delivery } = setup();
+    delivery.send.mockRejectedValue(new FormEmailDeliveryError('N8N_TIMEOUT'));
+
+    await expect(service.sendFormAssignment('assignment-1', {})).rejects.toMatchObject({
+      status: 502,
+    });
+
+    expect(tx.cfCommunication.update).toHaveBeenCalledWith({
+      where: { id: 'communication-1' },
+      data: {
+        status: 'FAILED',
+        failedAt: expect.any(Date),
+        errorCode: 'N8N_TIMEOUT',
+      },
+    });
+    expect(tx.cfFormAssignment.update).toHaveBeenCalledWith({
+      where: { id: 'assignment-1' },
+      data: { status: 'delivery_failed', sentAt: null },
+    });
+    expect(tx.cfActivityLog.create.mock.calls.map(([call]) => call.data.action))
+      .toEqual(['FORM_EMAIL_REQUESTED', 'FORM_EMAIL_FAILED']);
+    expect(tx.cfFormAssignment.update).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'sent' }),
+    }));
+  });
+
+  it('does not record delivery failure after the provider confirms delivery', async () => {
+    const { service, tx } = setup();
+    tx.cfCommunication.update.mockRejectedValueOnce(new Error('Database unavailable'));
+
+    await expect(service.sendFormAssignment('assignment-1', {}))
+      .rejects.toThrow('Database unavailable');
+
+    expect(tx.cfFormAssignment.update).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'delivery_failed' }),
+    }));
+    expect(tx.cfActivityLog.create.mock.calls.map(([call]) => call.data.action))
+      .toEqual(['FORM_EMAIL_REQUESTED']);
+  });
+
+  it('rejects a duplicate send when the assignment claim fails', async () => {
+    const { service, tx, delivery } = setup(0);
+
+    await expect(service.sendFormAssignment('assignment-1', {})).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(delivery.send).not.toHaveBeenCalled();
+    expect(tx.cfCommunication.create).not.toHaveBeenCalled();
+  });
+
+  it('reuses a valid failed assignment instead of creating another token', async () => {
+    const { service, prisma } = setup();
+    prisma.cfFormAssignment.findFirst.mockResolvedValue({
+      ...assignment,
+      enrollmentId: null,
+      status: 'delivery_failed',
+    });
+    prisma.cfFormAssignment.update.mockResolvedValue({
+      ...assignment,
+      enrollmentId: null,
+      status: 'draft',
+    });
+
+    await expect(service.createFormAssignment({
+      clientId: 'client-1',
+      formId: 'form-1',
+      completionMethod: 'secure_link',
+      deliveryMethod: 'email',
+      recipientEmail: 'client@example.com',
+      dueDate: '2026-09-27',
+    })).resolves.toMatchObject({ id: 'assignment-1', secureLinkToken: 'secure-token' });
+    expect(prisma.cfFormAssignment.update).toHaveBeenCalledWith({
+      where: { id: 'assignment-1' },
+      data: expect.objectContaining({
+        status: 'draft',
+        expiresAt,
+      }),
+    });
   });
 });

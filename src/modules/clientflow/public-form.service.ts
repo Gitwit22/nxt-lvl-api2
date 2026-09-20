@@ -303,6 +303,13 @@ export class PublicFormService {
     if (assignment.status === 'cancelled' || assignment.status === 'expired') {
       throw new GoneException('This form link is no longer active. Please request a new link.');
     }
+    if (assignment.expiresAt && assignment.expiresAt <= new Date()) {
+      await this.prisma.cfFormAssignment.update({
+        where: { id: assignment.id },
+        data: { status: 'expired' },
+      });
+      throw new GoneException('This form link has expired. Please request a new link.');
+    }
 
     const [
       template,
@@ -485,6 +492,13 @@ export class PublicFormService {
     );
     if (replay) return replay;
 
+    if (assignment.expiresAt && assignment.expiresAt <= new Date()) {
+      await this.prisma.cfFormAssignment.update({
+        where: { id: assignment.id },
+        data: { status: 'expired' },
+      });
+      throw new GoneException('This form link has expired. Please request a new link.');
+    }
     if (['submitted', 'approved', 'cancelled', 'expired'].includes(assignment.status)) {
       throw new BadRequestException(`This form has already been ${assignment.status}.`);
     }

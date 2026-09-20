@@ -29,6 +29,7 @@ import { ClientflowModule } from './modules/clientflow/clientflow.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: ['.env.local', '.env'],
       validate: (config) => environmentSchema.parse(config),
     }),
     ThrottlerModule.forRoot([

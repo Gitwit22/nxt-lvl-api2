@@ -108,7 +108,10 @@ describe('PublicFormService.submitPublicForm', () => {
       cfActivityLog: { create: jest.fn().mockResolvedValue({}) },
     };
     const prisma = {
-      cfFormAssignment: { findUnique: jest.fn().mockResolvedValue(assignment) },
+      cfFormAssignment: {
+        findUnique: jest.fn().mockResolvedValue(assignment),
+        update: jest.fn().mockResolvedValue({}),
+      },
       cfIntakeSubmission: { findFirst: jest.fn().mockResolvedValue(null) },
       cfClient: { findFirst: jest.fn().mockResolvedValue(client) },
       cfIntakeRenderSession: {
@@ -177,6 +180,22 @@ describe('PublicFormService.submitPublicForm', () => {
     },
   };
   const { instagramUrl: _legacyInstagramUrl, ...coreResponsesWithoutLegacySocial } = dto.coreResponses;
+
+  it('rejects a submission after the secure-link expiration time', async () => {
+    const { service, prisma } = setup();
+    prisma.cfFormAssignment.findUnique.mockResolvedValue({
+      ...assignment,
+      expiresAt: new Date('2026-09-19T23:59:59.999Z'),
+    });
+
+    await expect(service.submitPublicForm('secure-token', dto))
+      .rejects.toThrow('This form link has expired. Please request a new link.');
+    expect(prisma.cfFormAssignment.update).toHaveBeenCalledWith({
+      where: { id: assignment.id },
+      data: { status: 'expired' },
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
 
   it('updates the client and links answers and start date to the selected program', async () => {
     const { service, prisma, tx } = setup();
@@ -552,7 +571,10 @@ describe('PublicFormService.getPublicForm', () => {
 
   function setup(sectionTemplates: Record<string, unknown>[]) {
     const prisma = {
-      cfFormAssignment: { findUnique: jest.fn().mockResolvedValue(assignment) },
+      cfFormAssignment: {
+        findUnique: jest.fn().mockResolvedValue(assignment),
+        update: jest.fn().mockResolvedValue({ ...assignment, status: 'expired' }),
+      },
       cfFormTemplate: {
         findFirst: jest.fn().mockResolvedValue(coreTemplate),
         findMany: jest.fn().mockResolvedValue(sectionTemplates),
@@ -608,6 +630,23 @@ describe('PublicFormService.getPublicForm', () => {
 
     await expect(service.getPublicForm('secure-token'))
       .rejects.toThrow('This form link is no longer active. Please request a new link.');
+    expect(prisma.cfIntakeRenderSession.create).not.toHaveBeenCalled();
+  });
+
+  it('expires and rejects an assignment after its secure-link expiration time', async () => {
+    const { service, prisma } = setup([]);
+    prisma.cfFormAssignment.findUnique.mockResolvedValue({
+      ...assignment,
+      status: 'sent',
+      expiresAt: new Date('2026-09-19T23:59:59.999Z'),
+    });
+
+    await expect(service.getPublicForm('secure-token'))
+      .rejects.toThrow('This form link has expired. Please request a new link.');
+    expect(prisma.cfFormAssignment.update).toHaveBeenCalledWith({
+      where: { id: assignment.id },
+      data: { status: 'expired' },
+    });
     expect(prisma.cfIntakeRenderSession.create).not.toHaveBeenCalled();
   });
 
