@@ -32,24 +32,18 @@ describe('deploy preparation', () => {
       .toBe('host.example/neondb');
   });
 
-  it('repairs ClientFlow and attempts every phase when primary migration fails', () => {
+  it('stops immediately when a migration phase fails', () => {
     const calls: string[] = [];
 
     expect(() => runDeployment({
       env,
       runPhase: (script) => {
         calls.push(script);
-        return script === 'prisma:deploy' ? 1 : 0;
+        return script === 'prisma:deploy:clientflow' ? 1 : 0;
       },
-    })).toThrow('Primary migrations');
+    })).toThrow('ClientFlow migrations');
 
-    expect(calls).toEqual([
-      'prisma:deploy:clientflow',
-      'prisma:ensure:clientflow-schema',
-      'prisma:ensure:clientflow-auth',
-      'prisma:baseline:primary',
-      'prisma:deploy',
-    ]);
+    expect(calls).toEqual(['prisma:deploy:clientflow']);
   });
 
   it('completes when every phase succeeds', () => {

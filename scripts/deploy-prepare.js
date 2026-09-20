@@ -4,8 +4,8 @@ const DEPLOY_PHASES = [
   ['ClientFlow migrations', 'prisma:deploy:clientflow'],
   ['ClientFlow schema repair', 'prisma:ensure:clientflow-schema'],
   ['ClientFlow auth repair', 'prisma:ensure:clientflow-auth'],
-  ['Primary migration baseline', 'prisma:baseline:primary'],
-  ['Primary migrations', 'prisma:deploy'],
+  ['Platform migration baseline', 'prisma:baseline:primary'],
+  ['Platform migrations', 'prisma:deploy'],
 ];
 
 function databaseIdentity(value) {
@@ -33,7 +33,8 @@ function defaultRunPhase(script, env) {
 
 function runDeployment({ env = process.env, runPhase = defaultRunPhase } = {}) {
   validateEnvironment(env);
-  const failures = [];
+  console.log(`[deploy] Platform database: ${databaseIdentity(env.DATABASE_URL)}.`);
+  console.log(`[deploy] ClientFlow database: ${databaseIdentity(env.CLIENTFLOW_DATABASE_URL)}.`);
 
   for (const [label, script] of DEPLOY_PHASES) {
     console.log(`[deploy] Starting ${label}.`);
@@ -41,13 +42,8 @@ function runDeployment({ env = process.env, runPhase = defaultRunPhase } = {}) {
     if (status === 0) {
       console.log(`[deploy] Completed ${label}.`);
     } else {
-      failures.push(label);
-      console.error(`[deploy] Failed ${label} with exit code ${status}.`);
+      throw new Error(`[deploy] Failed ${label} with exit code ${status}.`);
     }
-  }
-
-  if (failures.length > 0) {
-    throw new Error(`Deployment preparation failed: ${failures.join(', ')}.`);
   }
 }
 
