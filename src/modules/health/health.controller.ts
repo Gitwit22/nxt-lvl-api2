@@ -9,6 +9,14 @@ export class HealthController {
     private readonly clientflowPrisma: ClientflowPrismaService,
   ) {}
 
+  @Get('live')
+  getLiveness() {
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   @Get()
   async getHealth() {
     const [primaryRows, clientflowRows] = await Promise.all([

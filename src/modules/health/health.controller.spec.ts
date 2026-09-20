@@ -30,6 +30,17 @@ describe('HealthController', () => {
     expect(clientflowPrisma.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
+  it('reports liveness without querying either database', () => {
+    const { controller, prisma, clientflowPrisma } = createController(false, false);
+
+    expect(controller.getLiveness()).toEqual({
+      status: 'ok',
+      timestamp: expect.any(String),
+    });
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    expect(clientflowPrisma.$queryRaw).not.toHaveBeenCalled();
+  });
+
   it('rejects a deployment with a missing ClientFlow schema dependency', async () => {
     const { controller } = createController(true, false);
 
