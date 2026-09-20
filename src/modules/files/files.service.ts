@@ -150,6 +150,16 @@ export class FilesService {
     };
   }
 
+  async deleteObject(objectKey: string, bucketName?: string): Promise<void> {
+    if (!this.s3Client) {
+      throw new ServiceUnavailableException('R2 is not configured.');
+    }
+    await this.s3Client.send(new DeleteObjectCommand({
+      Bucket: bucketName?.trim() || this.getBucketName(),
+      Key: objectKey,
+    }));
+  }
+
   private sanitizeFileName(fileName: string): string {
     return fileName
       .trim()

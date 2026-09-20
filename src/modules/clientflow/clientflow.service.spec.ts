@@ -733,6 +733,72 @@ describe('ClientflowService actor attribution', () => {
   });
 });
 
+describe('ClientflowService.deleteClient', () => {
+  it('hard deletes the tenant client, descendants, and stored documents', async () => {
+    const request = {
+      headers: { 'x-org-id': 'org-1' },
+      partition: { appUrl: 'https://clientflow.test' },
+    } as unknown as PartitionRequest;
+    const deleteMany = () => jest.fn().mockResolvedValue({ count: 1 });
+    const tx = {
+      cfClient: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'client-1' }),
+        delete: jest.fn().mockResolvedValue({ id: 'client-1' }),
+      },
+      cfProgramEnrollment: { findMany: jest.fn().mockResolvedValue([{ id: 'enrollment-1' }]), deleteMany: deleteMany() },
+      cfFormAssignment: { findMany: jest.fn().mockResolvedValue([{ id: 'assignment-1' }]), deleteMany: deleteMany() },
+      cfIntakeSubmission: { findMany: jest.fn().mockResolvedValue([{ id: 'submission-1' }]), deleteMany: deleteMany() },
+      cfDocument: {
+        findMany: jest.fn().mockResolvedValue([{ objectKey: 'org/client/document.pdf', bucket: 'files' }]),
+        deleteMany: deleteMany(),
+      },
+      cfIntakeSubmissionProgram: { deleteMany: deleteMany() },
+      cfIntakeSubmissionSnapshot: { deleteMany: deleteMany() },
+      cfIntakeRenderSession: { deleteMany: deleteMany() },
+      cfEnrollmentCheckpointEvidence: { deleteMany: deleteMany() },
+      cfEnrollmentMonitoringEvidence: { deleteMany: deleteMany() },
+      cfEnrollmentMonitoringHistory: { deleteMany: deleteMany() },
+      cfEnrollmentMonitoring: { deleteMany: deleteMany() },
+      cfEnrollmentProgressCheckpoint: { deleteMany: deleteMany() },
+      cfEnrollmentProgressTrack: { deleteMany: deleteMany() },
+      cfEnrollmentProgressPlan: { deleteMany: deleteMany() },
+      cfEnrollmentGoal: { deleteMany: deleteMany() },
+      cfEnrollmentStatusHistory: { deleteMany: deleteMany() },
+      cfTask: { deleteMany: deleteMany() },
+      cfNotification: { deleteMany: deleteMany() },
+      cfActivityLog: { deleteMany: deleteMany() },
+      cfCommunication: { deleteMany: deleteMany() },
+      cfFinalReport: { deleteMany: deleteMany() },
+      cfContract: { deleteMany: deleteMany() },
+      cfTerms: { deleteMany: deleteMany() },
+    };
+    const prisma = {
+      $queryRaw: jest.fn().mockResolvedValue([{ available: true }]),
+      $transaction: jest.fn(async (callback) => callback(tx)),
+    };
+    const files = { deleteObject: jest.fn().mockResolvedValue(undefined) };
+    const service = new ClientflowService(
+      request,
+      prisma as unknown as ClientflowPrismaService,
+      {} as NotificationsService,
+      files as unknown as FilesService,
+    );
+
+    const result = await service.deleteClient('client-1');
+
+    expect(tx.cfClient.findFirst).toHaveBeenCalledWith({
+      where: { id: 'client-1', organizationId: 'org-1' },
+      select: { id: true },
+    });
+    expect(files.deleteObject).toHaveBeenCalledWith('org/client/document.pdf', 'files');
+    expect(tx.cfProgramEnrollment.deleteMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', clientId: 'client-1' },
+    });
+    expect(tx.cfClient.delete).toHaveBeenCalledWith({ where: { id: 'client-1' } });
+    expect(result).toMatchObject({ id: 'client-1', deleted: true, removed: { storedFiles: 1 } });
+  });
+});
+
 describe('ClientflowService.removeDemo', () => {
   it('persists the live-mode transition and audit in the ClientFlow database', async () => {
     const request = {

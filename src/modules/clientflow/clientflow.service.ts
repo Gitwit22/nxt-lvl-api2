@@ -373,6 +373,121 @@ export class ClientflowService {
     });
   }
 
+  async deleteClient(id: string) {
+    const orgId = await this.getOrgId();
+    const [optionalSchema] = await this.prisma.$queryRaw<Array<{ available: boolean }>>(
+      Prisma.sql`SELECT to_regclass('"CfEnrollmentMonitoring"') IS NOT NULL AS available`,
+    );
+
+    return this.prisma.$transaction(async (tx) => {
+      const client = await tx.cfClient.findFirst({
+        where: { id, organizationId: orgId },
+        select: { id: true },
+      });
+      if (!client) throw new NotFoundException('Client not found.');
+
+      const where = { organizationId: orgId, clientId: id };
+      const [enrollments, assignments, submissions, documents] = await Promise.all([
+        tx.cfProgramEnrollment.findMany({ where, select: { id: true } }),
+        tx.cfFormAssignment.findMany({ where, select: { id: true } }),
+        tx.cfIntakeSubmission.findMany({ where, select: { id: true } }),
+        tx.cfDocument.findMany({
+          where,
+          select: { objectKey: true, bucket: true },
+        }),
+      ]);
+      const enrollmentIds = enrollments.map(({ id: enrollmentId }) => enrollmentId);
+      const assignmentIds = assignments.map(({ id: assignmentId }) => assignmentId);
+      const submissionIds = submissions.map(({ id: submissionId }) => submissionId);
+
+      await Promise.all(documents.flatMap((document) => document.objectKey
+        ? [this.files.deleteObject(document.objectKey, document.bucket ?? undefined)]
+        : []));
+
+      const removedSubmissionPrograms = await tx.cfIntakeSubmissionProgram.deleteMany({
+        where: {
+          organizationId: orgId,
+          OR: [
+            { intakeSubmissionId: { in: submissionIds } },
+            { enrollmentId: { in: enrollmentIds } },
+          ],
+        },
+      });
+      const removedSubmissionSnapshots = await tx.cfIntakeSubmissionSnapshot.deleteMany({
+        where: { organizationId: orgId, intakeSubmissionId: { in: submissionIds } },
+      });
+      const removedRenderSessions = await tx.cfIntakeRenderSession.deleteMany({
+        where: { organizationId: orgId, formAssignmentId: { in: assignmentIds } },
+      });
+
+      let monitoring = 0;
+      if (optionalSchema?.available === true) {
+        const monitoringRemovals = await Promise.all([
+          tx.cfEnrollmentCheckpointEvidence.deleteMany({
+            where: { organizationId: orgId, enrollmentId: { in: enrollmentIds } },
+          }),
+          tx.cfEnrollmentMonitoringEvidence.deleteMany({
+            where: { organizationId: orgId, enrollmentId: { in: enrollmentIds } },
+          }),
+          tx.cfEnrollmentMonitoringHistory.deleteMany({
+            where: { organizationId: orgId, enrollmentId: { in: enrollmentIds } },
+          }),
+          tx.cfEnrollmentMonitoring.deleteMany({
+            where: { organizationId: orgId, enrollmentId: { in: enrollmentIds } },
+          }),
+          tx.cfEnrollmentProgressCheckpoint.deleteMany({
+            where: { organizationId: orgId, enrollmentId: { in: enrollmentIds } },
+          }),
+          tx.cfEnrollmentProgressTrack.deleteMany({
+            where: { organizationId: orgId, enrollmentId: { in: enrollmentIds } },
+          }),
+          tx.cfEnrollmentProgressPlan.deleteMany({
+            where: { organizationId: orgId, enrollmentId: { in: enrollmentIds } },
+          }),
+          tx.cfEnrollmentGoal.deleteMany({
+            where: { organizationId: orgId, enrollmentId: { in: enrollmentIds } },
+          }),
+        ]);
+        monitoring = monitoringRemovals.reduce((total, result) => total + result.count, 0);
+      }
+
+      const directRemovals = await Promise.all([
+        tx.cfEnrollmentStatusHistory.deleteMany({
+          where: { organizationId: orgId, enrollmentId: { in: enrollmentIds } },
+        }),
+        tx.cfIntakeSubmission.deleteMany({ where }),
+        tx.cfTask.deleteMany({ where }),
+        tx.cfNotification.deleteMany({ where }),
+        tx.cfActivityLog.deleteMany({ where }),
+        tx.cfCommunication.deleteMany({ where }),
+        tx.cfDocument.deleteMany({ where }),
+        tx.cfFinalReport.deleteMany({ where }),
+        tx.cfContract.deleteMany({ where }),
+        tx.cfTerms.deleteMany({ where }),
+        tx.cfFormAssignment.deleteMany({ where }),
+        tx.cfProgramEnrollment.deleteMany({ where }),
+      ]);
+      await tx.cfClient.delete({ where: { id } });
+
+      return {
+        id,
+        deleted: true,
+        removed: {
+          records: directRemovals.reduce((total, result) => total + result.count, 0),
+          monitoring,
+          intakeSubmissionPrograms: removedSubmissionPrograms.count,
+          intakeSubmissionSnapshots: removedSubmissionSnapshots.count,
+          intakeRenderSessions: removedRenderSessions.count,
+          storedFiles: documents.filter(({ objectKey }) => Boolean(objectKey)).length,
+        },
+      };
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      maxWait: 5_000,
+      timeout: 15_000,
+    });
+  }
+
   // ─── Programs ───────────────────────────────────────────────────────────────
 
   async listPrograms() {

@@ -85,6 +85,10 @@ export class ClientflowController {
   @Patch('clients/:id')
   updateClient(@Param('id') id: string, @Body() dto: UpdateCfClientDto) { return this.svc.updateClient(id, dto); }
 
+  @Delete('clients/:id')
+  @UseGuards(OrgAdminGuard)
+  deleteClient(@Param('id') id: string) { return this.svc.deleteClient(id); }
+
   // ─── Programs ───────────────────────────────────────────────────────────────
 
   @Get('programs')
