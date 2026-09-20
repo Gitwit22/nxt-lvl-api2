@@ -148,12 +148,12 @@ describe('OrganizationsService.revokeMemberInvite', () => {
     prisma.adminUser.findUnique.mockResolvedValue(requestingAdmin);
   });
 
-  it('deletes the pending placeholder account so the email can be invited again', async () => {
+  it('deletes a pending invitation regardless of placeholder activation state', async () => {
     prisma.adminUser.findFirst.mockResolvedValue({
       id: 'invited-1',
       email: 'invited@example.com',
-      isActive: false,
-      invitation: { acceptedAt: null },
+      isActive: true,
+      invitation: { acceptedAt: null, revokedAt: null },
     });
     prisma.adminUser.deleteMany.mockResolvedValue({ count: 1 });
 
@@ -164,7 +164,6 @@ describe('OrganizationsService.revokeMemberInvite', () => {
       where: {
         id: 'invited-1',
         organizationId: 'org-1',
-        isActive: false,
         invitation: { is: { acceptedAt: null, revokedAt: null } },
       },
     });
@@ -175,7 +174,7 @@ describe('OrganizationsService.revokeMemberInvite', () => {
       id: 'member-1',
       email: 'member@example.com',
       isActive: true,
-      invitation: { acceptedAt: new Date() },
+      invitation: { acceptedAt: new Date(), revokedAt: null },
     });
 
     await expect(createService().revokeMemberInvite('org-1', 'member-1')).rejects.toBeInstanceOf(

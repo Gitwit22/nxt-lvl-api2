@@ -209,10 +209,10 @@ export class OrganizationsService {
     await this.verifyOrgAccess(orgId);
     const member = await this.prisma.adminUser.findFirst({
       where: { id: memberId, organizationId: orgId },
-      include: { invitation: { select: { acceptedAt: true } } },
+      include: { invitation: { select: { acceptedAt: true, revokedAt: true } } },
     });
     if (!member) throw new NotFoundException('Invitation not found.');
-    if (!member.invitation || member.invitation.acceptedAt || member.isActive) {
+    if (!member.invitation || member.invitation.acceptedAt || member.invitation.revokedAt) {
       throw new BadRequestException('Only pending invitations can be revoked.');
     }
 
@@ -220,7 +220,6 @@ export class OrganizationsService {
       where: {
         id: memberId,
         organizationId: orgId,
-        isActive: false,
         invitation: { is: { acceptedAt: null, revokedAt: null } },
       },
     });
