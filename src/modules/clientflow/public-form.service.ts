@@ -317,7 +317,6 @@ export class PublicFormService {
       program,
       programs,
       sectionTemplates,
-      existingEnrollments,
     ] = await Promise.all([
       this.prisma.cfFormTemplate.findFirst({
         where: { id: assignment.formId, organizationId: assignment.organizationId },
@@ -344,13 +343,6 @@ export class PublicFormService {
         },
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
       }),
-      this.prisma.cfProgramEnrollment.findMany({
-        where: {
-          organizationId: assignment.organizationId,
-          clientId: assignment.clientId,
-        },
-        select: { programId: true },
-      }),
     ]);
 
     if (!template) throw new NotFoundException('Form configuration not found.');
@@ -371,9 +363,6 @@ export class PublicFormService {
     }
 
     const fields = normalizePublicFormFields(template.fields);
-    const enrolledProgramIds = new Set(existingEnrollments.map(({ programId }) => programId));
-    const eligiblePrograms = programs.filter(({ id }) => !enrolledProgramIds.has(id));
-    const activeProgramIds = new Set(eligiblePrograms.map(({ id }) => id));
     const renderedSections: RenderedSection[] = [
       {
         id: `core:${template.id}:${template.version}`,
@@ -385,9 +374,9 @@ export class PublicFormService {
         description: template.description,
         fields,
       },
-      ...eligiblePrograms.map((activeProgram): RenderedSection => {
+      ...programs.map((activeProgram): RenderedSection => {
         const matchingSections = sectionTemplates.filter(
-          (candidate) => candidate.programId === activeProgram.id && activeProgramIds.has(activeProgram.id),
+          (candidate) => candidate.programId === activeProgram.id,
         );
         const section = matchingSections.find(
           (candidate) => candidate.id === activeProgram.defaultFormTemplateId,
@@ -464,7 +453,7 @@ export class PublicFormService {
       },
       intakeConfiguration: {
         configurationToken,
-        programs: eligiblePrograms,
+        programs,
         sections: renderedSections,
       },
       contact: {

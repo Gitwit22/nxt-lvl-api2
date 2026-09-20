@@ -710,20 +710,28 @@ describe('PublicFormService.getPublicForm', () => {
     });
   });
 
-  it('omits programs that already have an enrollment for the client', async () => {
-    const { service, prisma } = setup([]);
+  it('renders active program questions when the client already has an enrollment', async () => {
+    const { service, prisma } = setup([
+      {
+        id: 'program-template',
+        name: 'Current Profile',
+        description: '',
+        scope: 'program_section',
+        programId: program.id,
+        version: 3,
+        fields: [{ id: 'current_question', label: 'Current question', type: 'text' }],
+      },
+    ]);
     prisma.cfProgramEnrollment.findMany.mockResolvedValue([{ programId: program.id }]);
 
     const result = await service.getPublicForm('secure-token');
 
-    expect(result.intakeConfiguration.programs).toEqual([]);
-    expect(result.intakeConfiguration.sections).toHaveLength(1);
-    expect(prisma.cfProgramEnrollment.findMany).toHaveBeenCalledWith({
-      where: {
-        organizationId: assignment.organizationId,
-        clientId: assignment.clientId,
-      },
-      select: { programId: true },
+    expect(result.intakeConfiguration.programs).toEqual([program]);
+    expect(result.intakeConfiguration.sections[1]).toMatchObject({
+      templateId: 'program-template',
+      programId: program.id,
+      fields: [expect.objectContaining({ label: 'Current question' })],
     });
+    expect(prisma.cfProgramEnrollment.findMany).not.toHaveBeenCalled();
   });
 });
