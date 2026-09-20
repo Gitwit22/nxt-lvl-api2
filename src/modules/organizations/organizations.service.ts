@@ -205,6 +205,31 @@ export class OrganizationsService {
     return { message: `Invitation sent to ${dto.email}.` };
   }
 
+  async revokeMemberInvite(orgId: string, memberId: string) {
+    await this.verifyOrgAccess(orgId);
+    const member = await this.prisma.adminUser.findFirst({
+      where: { id: memberId, organizationId: orgId },
+      include: { invitation: { select: { acceptedAt: true } } },
+    });
+    if (!member) throw new NotFoundException('Invitation not found.');
+    if (!member.invitation || member.invitation.acceptedAt || member.isActive) {
+      throw new BadRequestException('Only pending invitations can be revoked.');
+    }
+
+    const revoked = await this.prisma.adminUser.deleteMany({
+      where: {
+        id: memberId,
+        organizationId: orgId,
+        isActive: false,
+        invitation: { is: { acceptedAt: null, revokedAt: null } },
+      },
+    });
+    if (revoked.count === 0) {
+      throw new BadRequestException('Only pending invitations can be revoked.');
+    }
+    return { message: `Invitation to ${member.email} revoked.` };
+  }
+
   async updateMemberRole(orgId: string, memberId: string, dto: UpdateMemberRoleDto) {
     await this.verifyOrgAccess(orgId);
     const member = await this.prisma.adminUser.findFirst({

@@ -1,4 +1,4 @@
-import { ForbiddenException, Logger } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { AdminRole } from '@prisma/client';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
 import type { PrismaService } from '../../prisma/prisma.service';
@@ -23,6 +23,8 @@ describe('OrganizationsService.listMembers', () => {
   };
   const prisma = {
     adminUser: {
+      deleteMany: jest.fn(),
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       findMany: jest.fn(),
     },
@@ -113,5 +115,72 @@ describe('OrganizationsService.listMembers', () => {
 
     await expect(createService().listMembers('org-1')).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.adminUser.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('OrganizationsService.revokeMemberInvite', () => {
+  const requestingAdmin = {
+    id: 'admin-1',
+    organizationId: 'org-1',
+    email: 'admin@example.com',
+  };
+  const prisma = {
+    adminUser: {
+      deleteMany: jest.fn(),
+      findFirst: jest.fn(),
+      findUnique: jest.fn(),
+    },
+  };
+  const request = {
+    headers: { 'x-admin-id': requestingAdmin.id },
+  } as unknown as PartitionRequest;
+
+  function createService() {
+    return new OrganizationsService(
+      request,
+      prisma as unknown as PrismaService,
+      {} as NotificationsService,
+    );
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.adminUser.findUnique.mockResolvedValue(requestingAdmin);
+  });
+
+  it('deletes the pending placeholder account so the email can be invited again', async () => {
+    prisma.adminUser.findFirst.mockResolvedValue({
+      id: 'invited-1',
+      email: 'invited@example.com',
+      isActive: false,
+      invitation: { acceptedAt: null },
+    });
+    prisma.adminUser.deleteMany.mockResolvedValue({ count: 1 });
+
+    await expect(createService().revokeMemberInvite('org-1', 'invited-1')).resolves.toEqual({
+      message: 'Invitation to invited@example.com revoked.',
+    });
+    expect(prisma.adminUser.deleteMany).toHaveBeenCalledWith({
+      where: {
+        id: 'invited-1',
+        organizationId: 'org-1',
+        isActive: false,
+        invitation: { is: { acceptedAt: null, revokedAt: null } },
+      },
+    });
+  });
+
+  it('does not revoke an accepted invitation', async () => {
+    prisma.adminUser.findFirst.mockResolvedValue({
+      id: 'member-1',
+      email: 'member@example.com',
+      isActive: true,
+      invitation: { acceptedAt: new Date() },
+    });
+
+    await expect(createService().revokeMemberInvite('org-1', 'member-1')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(prisma.adminUser.deleteMany).not.toHaveBeenCalled();
   });
 });

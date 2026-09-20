@@ -41,6 +41,15 @@ export class OrganizationsController {
     return this.organizationsService.inviteMember(orgId, dto);
   }
 
+  @Post(':orgId/invitations/:memberId/revoke')
+  @UseGuards(OrgAdminGuard)
+  revokeMemberInvite(
+    @Param('orgId') orgId: string,
+    @Param('memberId') memberId: string,
+  ) {
+    return this.organizationsService.revokeMemberInvite(orgId, memberId);
+  }
+
   @Patch(':orgId/members/:memberId/role')
   @UseGuards(OrgAdminGuard)
   updateMemberRole(
