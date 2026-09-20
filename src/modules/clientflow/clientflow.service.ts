@@ -17,7 +17,6 @@ import { TransitionToLiveModeDto } from './dto/transition-to-live-mode.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
   canonicalFieldKey,
-  ensureCoreIntakeFields,
   MappableFormField,
   normalizeProgramFormFields,
   normalizePublicFormFields,
@@ -55,7 +54,7 @@ function normalizeFormTemplate<T extends {
     ...template,
     scope,
     fields: scope === 'master_core'
-      ? ensureCoreIntakeFields(template.fields)
+      ? normalizePublicFormFields(template.fields)
       : scope === 'program_section'
         ? normalizeProgramFormFields(template.fields, template.programId, template.id)
         : normalizePublicFormFields(template.fields),

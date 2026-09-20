@@ -83,4 +83,20 @@ describe('ClientFlow schema verifier', () => {
       'ADD COLUMN IF NOT EXISTS "changedByDisplayName" TEXT',
     );
   });
+
+  it('converts only active Master Intake template fields to repeatable social links', () => {
+    const migration = fs.readFileSync(
+      path.resolve(
+        __dirname,
+        '../../../prisma/clientflow/migrations/20260920133000_replace_master_social_fields/migration.sql',
+      ),
+      'utf8',
+    );
+
+    expect(migration).toContain('template."scope" = \'master_core\'');
+    expect(migration).toContain('template."isActive" = true');
+    expect(migration).toContain("'type', 'social_links'");
+    expect(migration).toContain('"version" = template."version" + 1');
+    expect(migration).not.toMatch(/CfClient|CfFormAssignment|CfFormRenderSession|CfIntakeSubmission/);
+  });
 });

@@ -1,6 +1,5 @@
 import { Prisma, PrismaClient } from '../src/generated/clientflow';
 import {
-  ensureCoreIntakeFields,
   normalizeProgramFormFields,
   normalizePublicFormFields,
 } from '../src/modules/clientflow/form-field-mapping';
@@ -48,7 +47,7 @@ function normalizedFields(template: {
   fields: Prisma.JsonValue;
 }) {
   const scope = effectiveScope(template.scope, template.programId);
-  if (scope === 'master_core') return ensureCoreIntakeFields(template.fields);
+  if (scope === 'master_core') return normalizePublicFormFields(template.fields);
   if (scope === 'program_section') {
     return normalizeProgramFormFields(template.fields, template.programId, template.id);
   }

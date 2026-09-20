@@ -93,6 +93,7 @@ export const INTAKE_FIELD_KEYS: Record<string, string> = {
 };
 
 export const SOCIAL_FIELD_IDS = new Set([
+  'socialLinks',
   'facebookUrl',
   'instagramUrl',
   'linkedinUrl',
@@ -106,6 +107,7 @@ const FIELD_LABELS: Record<string, string> = {
   email: 'Email',
   phone: 'Phone',
   website: 'Website',
+  socialLinks: 'Social media',
   facebookUrl: 'Facebook URL',
   instagramUrl: 'Instagram URL',
   linkedinUrl: 'LinkedIn URL',
@@ -124,7 +126,7 @@ const FIELD_LABELS: Record<string, string> = {
 
 const FIELD_TYPES = new Set([
   'text', 'email', 'phone', 'url', 'textarea', 'number', 'date', 'select', 'file', 'checkbox',
-  'signature',
+  'signature', 'social_links',
 ]);
 
 export function canonicalFieldKey(field: MappableFormField): string | null {

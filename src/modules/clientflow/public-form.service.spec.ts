@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import type { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
 import { Prisma } from '../../generated/clientflow';
 import { PublicFormService, RenderedSection } from './public-form.service';
@@ -83,7 +84,10 @@ describe('PublicFormService.submitPublicForm', () => {
     },
   ];
 
-  function setup(existingEnrollments: Array<{ id: string; programId: string; startDate: Date | null }> = []) {
+  function setup(
+    existingEnrollments: Array<{ id: string; programId: string; startDate: Date | null }> = [],
+    sections: RenderedSection[] = renderedSections,
+  ) {
     const tx = {
       cfIntakeSubmission: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -111,7 +115,7 @@ describe('PublicFormService.submitPublicForm', () => {
         findFirst: jest.fn().mockResolvedValue({
           coreTemplateId: 'form-1',
           coreTemplateVersion: 1,
-          renderedSections,
+          renderedSections: sections,
         }),
       },
       cfFormTemplate: {
@@ -172,6 +176,7 @@ describe('PublicFormService.submitPublicForm', () => {
       },
     },
   };
+  const { instagramUrl: _legacyInstagramUrl, ...coreResponsesWithoutLegacySocial } = dto.coreResponses;
 
   it('updates the client and links answers and start date to the selected program', async () => {
     const { service, prisma, tx } = setup();
@@ -269,6 +274,68 @@ describe('PublicFormService.submitPublicForm', () => {
       ],
       skipDuplicates: true,
     });
+  });
+
+  it('replaces and deduplicates repeatable social links', async () => {
+    const sections = structuredClone(renderedSections);
+    sections[0].fields = sections[0].fields
+      .filter((field) => field.id !== 'instagramUrl')
+      .concat({ id: 'socialLinks', label: 'Social media', type: 'social_links', required: false });
+    const { service, tx } = setup([], sections);
+
+    await service.submitPublicForm('secure-token', {
+      ...dto,
+      coreResponses: {
+        ...coreResponsesWithoutLegacySocial,
+        socialLinks: [
+          ' https://instagram.com/northstar ',
+          'https://linkedin.com/company/northstar',
+          'https://INSTAGRAM.com/northstar',
+        ],
+      },
+    });
+
+    expect(tx.cfClient.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        socialLinks: [
+          'https://instagram.com/northstar',
+          'https://linkedin.com/company/northstar',
+        ],
+      }),
+    }));
+  });
+
+  it('clears existing social links when the repeatable response is empty', async () => {
+    const sections = structuredClone(renderedSections);
+    sections[0].fields = sections[0].fields
+      .filter((field) => field.id !== 'instagramUrl')
+      .concat({ id: 'socialLinks', label: 'Social media', type: 'social_links', required: false });
+    const { service, tx } = setup([], sections);
+
+    await service.submitPublicForm('secure-token', {
+      ...dto,
+      coreResponses: { ...coreResponsesWithoutLegacySocial, socialLinks: [] },
+    });
+
+    expect(tx.cfClient.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ socialLinks: [] }),
+    }));
+  });
+
+  it('rejects non-HTTP repeatable social links', async () => {
+    const sections = structuredClone(renderedSections);
+    sections[0].fields = sections[0].fields
+      .filter((field) => field.id !== 'instagramUrl')
+      .concat({ id: 'socialLinks', label: 'Social media', type: 'social_links', required: false });
+    const { service } = setup([], sections);
+
+    await expect(service.submitPublicForm('secure-token', {
+      ...dto,
+      coreResponses: {
+        ...coreResponsesWithoutLegacySocial,
+        socialLinks: ['javascript:alert(1)'],
+      },
+    })).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('does not replace a start date already established on an existing enrollment', async () => {

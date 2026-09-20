@@ -379,6 +379,61 @@ describe('ClientflowService form template persistence', () => {
     partition: { appUrl: 'https://clientflow.test' },
   } as unknown as PartitionRequest;
 
+  it('returns exactly the saved Master Intake questions after a reload', async () => {
+    const savedQuestions = [
+      { id: 'name', label: 'Name', type: 'text', required: true },
+      { id: 'socialLinks', label: 'Social media', type: 'social_links', required: false },
+    ];
+    let persistedTemplate = {
+      id: 'form-master',
+      organizationId: 'org-1',
+      programId: null,
+      scope: 'master_core',
+      version: 1,
+      sortOrder: 0,
+      name: 'Master Intake',
+      description: '',
+      fields: [
+        ...savedQuestions,
+        { id: 'facebookUrl', label: 'Facebook URL', type: 'url', required: false },
+      ] as unknown[],
+      emailTemplate: 'default',
+      internalNotes: null,
+      dueInDays: 7,
+      isActive: true,
+      createdAt: new Date('2026-08-31T12:00:00.000Z'),
+      updatedAt: new Date('2026-08-31T12:00:00.000Z'),
+    };
+    const prisma = {
+      cfFormTemplate: {
+        findFirst: jest.fn().mockImplementation(async () => persistedTemplate),
+        update: jest.fn().mockImplementation(async ({ data }) => {
+          const version = typeof data.version === 'object' && data.version.increment
+            ? persistedTemplate.version + data.version.increment
+            : data.version ?? persistedTemplate.version;
+          persistedTemplate = { ...persistedTemplate, ...data, version };
+          return persistedTemplate;
+        }),
+        findMany: jest.fn().mockImplementation(async () => [persistedTemplate]),
+      },
+    };
+    const service = new ClientflowService(
+      request,
+      prisma as unknown as ClientflowPrismaService,
+      {} as NotificationsService,
+      {} as FilesService,
+    );
+
+    const updated = await service.updateFormTemplate(persistedTemplate.id, {
+      fields: savedQuestions,
+    });
+    const [reloaded] = await service.listFormTemplates();
+
+    expect(updated.fields).toEqual(savedQuestions);
+    expect(reloaded.fields).toEqual(savedQuestions);
+    expect(updated.version).toBe(2);
+  });
+
   it('returns the saved program questions unchanged after a reload', async () => {
     const restoredQuestions = [
       {

@@ -1,6 +1,6 @@
 import { Prisma, PrismaClient } from '../src/generated/clientflow';
 import {
-  ensureCoreIntakeFields,
+  normalizePublicFormFields,
   normalizeProgramFormFields,
 } from '../src/modules/clientflow/form-field-mapping';
 
@@ -33,7 +33,7 @@ function fieldsValue(value: Prisma.JsonValue): StoredField[] {
 }
 
 function normalizeCore(fields: StoredField[]): StoredField[] {
-  return ensureCoreIntakeFields(fields);
+  return normalizePublicFormFields(fields);
 }
 
 function normalizeProgram(

@@ -4,7 +4,6 @@ import { createHash, randomBytes } from 'crypto';
 import { ClientflowPrismaService } from '../../prisma/clientflow-prisma.service';
 import { PublicFormResponseValue, SubmitPublicFormDto } from './dto/submit-public-form.dto';
 import {
-  ensureCoreIntakeFields,
   INTAKE_FIELD_KEYS,
   isPublicFieldRequired,
   normalizeProgramFormFields,
@@ -77,6 +76,23 @@ const SOCIAL_HOSTS: Record<string, string[]> = {
   youtubeUrl: ['youtube.com', 'youtu.be'],
 };
 
+const MAX_SOCIAL_LINKS = 10;
+
+function normalizeSocialLinks(value: PublicFormResponseValue | undefined): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const links: string[] = [];
+  for (const entry of value) {
+    const link = typeof entry === 'string' ? entry.trim() : '';
+    const key = link.toLowerCase();
+    if (link && !seen.has(key)) {
+      seen.add(key);
+      links.push(link);
+    }
+  }
+  return links;
+}
+
 function mapResponsesToClient(
   fields: PublicFormFieldShape[],
   responses: Record<string, PublicFormResponseValue>,
@@ -106,15 +122,18 @@ function mapResponsesToClient(
     if (intakeKey) intake[intakeKey] = value;
   }
 
-  const hasSocialFields = fields.some((field) => field.id in SOCIAL_HOSTS);
-  const socialLinks = hasSocialFields
-    ? Object.keys(SOCIAL_HOSTS)
+  const repeatableSocialField = fields.find((field) => field.type === 'social_links');
+  const hasLegacySocialFields = fields.some((field) => field.id in SOCIAL_HOSTS);
+  const socialLinks = repeatableSocialField
+    ? normalizeSocialLinks(responses[repeatableSocialField.id])
+    : hasLegacySocialFields
+      ? Object.keys(SOCIAL_HOSTS)
         .map((fieldId) => {
           const response = responses[fieldId];
           return typeof response === 'string' ? response.trim() : '';
         })
         .filter((value): value is string => Boolean(value))
-    : undefined;
+      : undefined;
 
   return { client, intake, socialLinks };
 }
@@ -145,6 +164,18 @@ function isResponseInvalid(
   }
   if (field.type === 'signature') {
     return typeof value !== 'string' || value.trim().length > 200;
+  }
+  if (field.type === 'social_links') {
+    if (!Array.isArray(value) || value.length > MAX_SOCIAL_LINKS) return true;
+    return value.some((entry) => {
+      if (typeof entry !== 'string' || !entry.trim()) return true;
+      try {
+        const url = new URL(entry.trim());
+        return url.protocol !== 'http:' && url.protocol !== 'https:';
+      } catch {
+        return true;
+      }
+    });
   }
   return false;
 }
@@ -194,8 +225,8 @@ function resolvePrefill(
     socialLinks?: Prisma.JsonValue;
     intake: ClientIntake;
   },
-): Record<string, string> {
-  const result: Record<string, string> = {};
+): Record<string, PublicFormResponseValue> {
+  const result: Record<string, PublicFormResponseValue> = {};
   const intake = client.intake ?? {};
 
   const byKey: Record<string, string> = {
@@ -237,6 +268,10 @@ function resolvePrefill(
     : [];
 
   for (const field of fields) {
+    if (field.type === 'social_links') {
+      result[field.id] = socialLinks;
+      continue;
+    }
     let value = '';
     const socialHosts = SOCIAL_HOSTS[field.id];
     if (socialHosts) {
@@ -328,7 +363,7 @@ export class PublicFormService {
       });
     }
 
-    const fields = ensureCoreIntakeFields(template.fields);
+    const fields = normalizePublicFormFields(template.fields);
     const enrolledProgramIds = new Set(existingEnrollments.map(({ programId }) => programId));
     const eligiblePrograms = programs.filter(({ id }) => !enrolledProgramIds.has(id));
     const activeProgramIds = new Set(eligiblePrograms.map(({ id }) => id));
@@ -741,7 +776,7 @@ export class PublicFormService {
         where: { id: assignment.clientId },
         data: {
           ...mapped.client,
-          ...(mapped.socialLinks?.length ? { socialLinks: mapped.socialLinks } : {}),
+          ...(mapped.socialLinks !== undefined ? { socialLinks: mapped.socialLinks } : {}),
           intake: mapped.intake as Prisma.InputJsonValue,
         },
       });
