@@ -593,6 +593,48 @@ describe('PublicFormService.getPublicForm', () => {
     };
   }
 
+  it('canonicalizes stored select prefills to the current rendered option', async () => {
+    const { service, prisma } = setup([]);
+    prisma.cfFormTemplate.findFirst.mockResolvedValue({
+      ...coreTemplate,
+      fields: [{
+        id: 'preferred_contact_method',
+        label: 'Preferred contact method',
+        type: 'select',
+        required: true,
+        prefillKey: 'preferredContact',
+        options: ['Email', 'Phone'],
+      }],
+    });
+    prisma.cfClient.findFirst.mockResolvedValue({
+      primaryContactName: 'Jordan Lee',
+      businessName: 'North Star Studio',
+      email: 'jordan@example.com',
+      phone: '555-0102',
+      website: null,
+      socialLinks: [],
+      intake: { preferredContact: 'email' },
+    });
+
+    const result = await service.getPublicForm('secure-token');
+
+    expect(result.prefill.preferred_contact_method).toBe('Email');
+
+    prisma.cfClient.findFirst.mockResolvedValue({
+      primaryContactName: 'Jordan Lee',
+      businessName: 'North Star Studio',
+      email: 'jordan@example.com',
+      phone: '555-0102',
+      website: null,
+      socialLinks: [],
+      intake: { preferredContact: 'Fax' },
+    });
+
+    const obsoleteResult = await service.getPublicForm('secure-token');
+
+    expect(obsoleteResult.prefill.preferred_contact_method).toBeUndefined();
+  });
+
   it('renders questions from a legacy template assigned to an active program', async () => {
     const { service, prisma } = setup([
       {

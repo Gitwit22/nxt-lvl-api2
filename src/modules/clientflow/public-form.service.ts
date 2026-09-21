@@ -283,6 +283,10 @@ function resolvePrefill(
     } else if (byFieldId[field.id]) {
       value = byFieldId[field.id];
     }
+    if (field.type === 'select' && field.options?.length && value) {
+      const normalizedValue = value.trim().toLowerCase();
+      value = field.options.find((option) => option.trim().toLowerCase() === normalizedValue) ?? '';
+    }
     if (value) result[field.id] = value;
   }
 
