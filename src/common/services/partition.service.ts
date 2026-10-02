@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import clientflowPartition from '../../config/partitions/clientflow.partition.json';
 import fbaAppPartition from '../../config/partitions/fba-app.partition.json';
 
 export const DEFAULT_PARTITION_SLUG = 'fba-app';
@@ -21,7 +20,6 @@ export interface PartitionConfig {
 export class PartitionService {
   private readonly partitions = new Map<string, PartitionConfig>([
     [DEFAULT_PARTITION_SLUG, { slug: DEFAULT_PARTITION_SLUG, ...fbaAppPartition }],
-    ['clientflow', { slug: 'clientflow', ...clientflowPartition }],
   ]);
 
   getPartition(slug: string): PartitionConfig {

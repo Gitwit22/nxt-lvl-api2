@@ -34,7 +34,7 @@ describe('OrganizationsService.listMembers', () => {
   };
   const request = {
     headers: { 'x-admin-id': requestingAdmin.id },
-    partition: { appUrl: 'https://clientflow.test' },
+    partition: { appUrl: 'https://fba-app.test' },
   } as unknown as PartitionRequest;
 
   function createService() {

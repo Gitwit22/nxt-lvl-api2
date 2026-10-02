@@ -140,7 +140,7 @@ Session Tracking:
   // Required by OAuth/OIDC standards
   alg: 'HS256',           // ✅ Fixed, not negotiable
   iss: 'ea-management-api', // ✅ Issuer verification
-  aud: 'clientflow-web',  // ✅ Audience verification
+  aud: 'nxtlvl-web',     // ✅ Audience verification
   sub: 'user-id',         // ✅ Subject validation
   exp: 1234567890,        // ✅ Expiration check
   iat: 1234567000,        // ✅ Issued-at validation
@@ -182,7 +182,7 @@ const token = localStorage.getItem('token');
 ```typescript
 // Backend sets HttpOnly cookie on login
 res.setHeader('Set-Cookie', [
-  `__Host-clientflow_session=${accessToken}; ` +
+  `__Host-nxtlvl_session=${accessToken}; ` +
   `HttpOnly; ` +           // ✅ JavaScript cannot access
   `Secure; ` +             // ✅ HTTPS only
   `SameSite=Lax; ` +       // ✅ CSRF protection
@@ -204,8 +204,8 @@ fetch(`${API_URL}/organizations`, {
 // Safe for cross-origin requests
 app.use(cors({
   origin: [
-    'https://staging.clientflow.app',
-    'https://prod.clientflow.app'
+    'https://staging.example.com',
+    'https://prod.example.com'
   ],
   credentials: true,  // ✅ Allow credentials
   methods: ['GET', 'POST', 'PATCH', 'DELETE'],

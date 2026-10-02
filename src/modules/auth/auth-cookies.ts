@@ -5,11 +5,11 @@ const REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const production = process.env['NODE_ENV'] === 'production';
 
 export const ACCESS_COOKIE_NAME = production
-  ? '__Host-clientflow_session'
-  : 'clientflow_session';
+  ? '__Host-nxtlvl_session'
+  : 'nxtlvl_session';
 export const REFRESH_COOKIE_NAME = production
-  ? '__Host-clientflow_refresh'
-  : 'clientflow_refresh';
+  ? '__Host-nxtlvl_refresh'
+  : 'nxtlvl_refresh';
 
 const baseCookieOptions: CookieOptions = {
   httpOnly: true,

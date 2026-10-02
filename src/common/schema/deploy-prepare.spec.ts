@@ -14,17 +14,12 @@ const {
 
 const env = {
   DATABASE_URL: 'postgresql://user:secret@primary.example/neondb',
-  CLIENTFLOW_DATABASE_URL: 'postgresql://user:secret@clientflow.example/neondb',
 };
 
 describe('deploy preparation', () => {
-  it('requires both distinct database targets', () => {
-    expect(() => validateEnvironment({ DATABASE_URL: env.DATABASE_URL }))
-      .toThrow('CLIENTFLOW_DATABASE_URL is required.');
-    expect(() => validateEnvironment({
-      DATABASE_URL: 'postgresql://user:one@same-pooler.example/neondb',
-      CLIENTFLOW_DATABASE_URL: 'postgresql://user:two@same.example/neondb',
-    })).toThrow('must target different databases');
+  it('requires a database target', () => {
+    expect(() => validateEnvironment({}))
+      .toThrow('DATABASE_URL is required.');
   });
 
   it('compares targets without credentials or pooler aliases', () => {
@@ -39,11 +34,11 @@ describe('deploy preparation', () => {
       env,
       runPhase: (script) => {
         calls.push(script);
-        return script === 'prisma:deploy:clientflow' ? 1 : 0;
+        return script === 'prisma:baseline:primary' ? 1 : 0;
       },
-    })).toThrow('ClientFlow migrations');
+    })).toThrow('Platform migration baseline');
 
-    expect(calls).toEqual(['prisma:deploy:clientflow']);
+    expect(calls).toEqual(['prisma:baseline:primary']);
   });
 
   it('completes when every phase succeeds', () => {

@@ -13,7 +13,7 @@ describe('GlobalExceptionFilter', () => {
       method: 'POST',
       originalUrl: '/api/v1/public/form/token/submit',
       requestId: 'request-123',
-      partition: { slug: 'clientflow' },
+      partition: { slug: 'fba-app' },
     };
     const host = {
       switchToHttp: () => ({
@@ -42,7 +42,7 @@ describe('GlobalExceptionFilter', () => {
       expect.objectContaining({
         requestId: 'request-123',
         method: 'POST',
-        partition: 'clientflow',
+        partition: 'fba-app',
         prismaCode: 'P2021',
         prismaModel: 'CfIntakeSubmission',
         prismaTable: 'public.CfIntakeSubmission',

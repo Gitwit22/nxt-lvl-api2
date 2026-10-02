@@ -20,20 +20,9 @@ describe('PartitionMiddleware', () => {
     } as unknown as Request;
   }
 
-  it('resolves an explicit ClientFlow partition', () => {
-    const req = request('/api/v1/admin/cf/clients', 'clientflow');
-
-    middleware.use(req, response, next);
-
-    expect((req as PartitionRequest).partition.authIssuer).toBe('clientflow-api');
-    expect(next).toHaveBeenCalledTimes(1);
-  });
-
   it.each([
     '/api/v1/auth/login',
     '/api/v1/organizations/org-1/settings',
-    '/api/v1/admin/cf/clients',
-    '/api/v1/public/form/token-1',
   ])(
     'rejects a missing partition on %s',
     (originalUrl) => {
@@ -46,7 +35,7 @@ describe('PartitionMiddleware', () => {
 
   it('rejects an unknown explicit partition', () => {
     expect(() =>
-      middleware.use(request('/api/v1/admin/cf/clients', 'unknown'), response, next),
+      middleware.use(request('/api/v1/auth/login', 'unknown'), response, next),
     ).toThrow(BadRequestException);
     expect(next).not.toHaveBeenCalled();
   });
@@ -61,10 +50,10 @@ describe('PartitionMiddleware', () => {
   });
 
   it('exposes the canonical partition slug to request-scoped services', () => {
-    const req = request('/api/v1/auth/login', 'CLIENTFLOW');
+    const req = request('/api/v1/auth/login', 'FBA-APP');
 
     middleware.use(req, response, next);
 
-    expect((req as PartitionRequest).partition.slug).toBe('clientflow');
+    expect((req as PartitionRequest).partition.slug).toBe('fba-app');
   });
 });

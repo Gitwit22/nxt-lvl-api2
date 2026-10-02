@@ -1,12 +1,11 @@
 const { PrismaClient } = require('@prisma/client');
 const { hash } = require('bcrypt');
-const clientflowPartition = require('../src/config/partitions/clientflow.partition.json');
 const fbaAppPartition = require('../src/config/partitions/fba-app.partition.json');
 
 const prisma = new PrismaClient();
 
 async function main() {
-  const programPartitions = [fbaAppPartition, clientflowPartition];
+  const programPartitions = [fbaAppPartition];
   const programPartition = fbaAppPartition;
   const organization = await prisma.organization.upsert({
     where: { slug: programPartition.organizationSlug },

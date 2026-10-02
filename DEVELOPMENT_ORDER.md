@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines the correct development order for establishing the EA Management LLC organization and implementing authentication for ClientFlow Hub.
+This document outlines the correct development order for establishing the EA Management LLC organization and implementing authentication for the NXT LVL API.
 
 **Current Status**: ✅ Phase 1 & Phase 2 infrastructure created and ready for testing
 

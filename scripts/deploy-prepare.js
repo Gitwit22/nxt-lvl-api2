@@ -1,9 +1,6 @@
 const { spawnSync } = require('node:child_process');
 
 const DEPLOY_PHASES = [
-  ['ClientFlow migrations', 'prisma:deploy:clientflow'],
-  ['ClientFlow schema repair', 'prisma:ensure:clientflow-schema'],
-  ['ClientFlow auth repair', 'prisma:ensure:clientflow-auth'],
   ['Platform migration baseline', 'prisma:baseline:primary'],
   ['Platform migrations', 'prisma:deploy'],
 ];
@@ -16,10 +13,6 @@ function databaseIdentity(value) {
 
 function validateEnvironment(env) {
   if (!env.DATABASE_URL) throw new Error('DATABASE_URL is required.');
-  if (!env.CLIENTFLOW_DATABASE_URL) throw new Error('CLIENTFLOW_DATABASE_URL is required.');
-  if (databaseIdentity(env.DATABASE_URL) === databaseIdentity(env.CLIENTFLOW_DATABASE_URL)) {
-    throw new Error('DATABASE_URL and CLIENTFLOW_DATABASE_URL must target different databases.');
-  }
 }
 
 function defaultRunPhase(script, env) {
@@ -34,7 +27,6 @@ function defaultRunPhase(script, env) {
 function runDeployment({ env = process.env, runPhase = defaultRunPhase } = {}) {
   validateEnvironment(env);
   console.log(`[deploy] Platform database: ${databaseIdentity(env.DATABASE_URL)}.`);
-  console.log(`[deploy] ClientFlow database: ${databaseIdentity(env.CLIENTFLOW_DATABASE_URL)}.`);
 
   for (const [label, script] of DEPLOY_PHASES) {
     console.log(`[deploy] Starting ${label}.`);

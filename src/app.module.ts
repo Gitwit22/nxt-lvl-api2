@@ -23,7 +23,6 @@ import { ClipMagicModule } from './modules/clip-magic/clip-magic.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
-import { ClientflowModule } from './modules/clientflow/clientflow.module';
 
 @Module({
   imports: [
@@ -57,7 +56,6 @@ import { ClientflowModule } from './modules/clientflow/clientflow.module';
     AdminModule,
     AuditLogModule,
     OrganizationsModule,
-    ClientflowModule,
   ],
   providers: [
     {

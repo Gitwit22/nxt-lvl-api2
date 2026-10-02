@@ -226,7 +226,7 @@ async login(@Body() dto: LoginDto, @Response() res) {
   const result = await this.authService.login(dto.email, dto.password);
   
   // Set HttpOnly cookie
-  res.cookie('__Host-clientflow_session', result.accessToken, {
+  res.cookie('__Host-nxtlvl_session', result.accessToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
@@ -264,7 +264,7 @@ async logout(@Req() req, @Response() res) {
   const sessionId = req.sessionID;
   await this.authService.logout(req.user.adminId, sessionId);
   
-  res.clearCookie('__Host-clientflow_session');
+  res.clearCookie('__Host-nxtlvl_session');
   res.clearCookie('__Host-refresh_token');
   
   return res.json({ message: 'Logged out successfully' });
@@ -307,7 +307,7 @@ async inviteMember(
 ```
 
 ### Phase 5: Frontend Changes (🟡 IMPORTANT)
-In clientflow-hub:
+In the frontend app:
 ```typescript
 // ❌ REMOVE
 localStorage.setItem('token', accessToken);
@@ -334,7 +334,7 @@ fetch(`${API_URL}/organizations`, {
 ```typescript
 ✅ alg: 'HS256' (hardcoded, not negotiable)
 ✅ iss: 'ea-management-api' (issuer verification)
-✅ aud: 'clientflow-web' (audience verification)
+✅ aud: 'nxtlvl-web' (audience verification)
 ✅ sub: user-id (subject validation)
 ✅ exp: timestamp (expiration check)
 ✅ iat: timestamp (issued-at validation)

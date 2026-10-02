@@ -10,7 +10,7 @@ describe('FilesService.createFileUrl', () => {
   ] as const;
   const originalEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
   const request = {
-    partition: { storageNamespace: 'clientflow-hub' },
+    partition: { storageNamespace: 'fba-app-storage' },
   } as unknown as PartitionRequest;
 
   beforeEach(() => {
@@ -37,12 +37,12 @@ describe('FilesService.createFileUrl', () => {
       contentType: 'application/pdf',
       expiresInSeconds: 900,
       fileName: 'application.pdf',
-      objectKey: 'clientflow-hub/organizations/org-1/documents/document-1',
+      objectKey: 'fba-app-storage/organizations/org-1/documents/document-1',
     });
     const url = new URL(result.url);
 
     expect(result.bucketName).toBe('eamanagement');
-    expect(url.pathname).toBe('/eamanagement/clientflow-hub/organizations/org-1/documents/document-1');
+    expect(url.pathname).toBe('/eamanagement/fba-app-storage/organizations/org-1/documents/document-1');
     expect(url.searchParams.get('X-Amz-Expires')).toBe('900');
     expect(url.searchParams.get('x-id')).toBe('PutObject');
     expect(url.searchParams.has('x-amz-checksum-crc32')).toBe(false);
@@ -56,10 +56,10 @@ describe('FilesService.createFileUrl', () => {
       action: 'download',
       contentType: 'application/pdf',
       fileName: 'application.pdf',
-      objectKey: 'clientflow-hub/documents/document-1',
+      objectKey: 'fba-app-storage/documents/document-1',
     });
 
     expect(result.bucketName).toBe('fallback-bucket');
-    expect(new URL(result.url).pathname).toBe('/fallback-bucket/clientflow-hub/documents/document-1');
+    expect(new URL(result.url).pathname).toBe('/fallback-bucket/fba-app-storage/documents/document-1');
   });
 });

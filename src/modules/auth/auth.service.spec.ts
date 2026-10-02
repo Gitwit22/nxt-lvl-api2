@@ -26,7 +26,7 @@ describe('AuthService session lifecycle', () => {
     hash: jest.fn(),
   };
   const request = {
-    partition: { slug: 'clientflow', authIssuer: 'clientflow-api' },
+    partition: { slug: 'fba-app', authIssuer: 'fbappinc-api2' },
   } as PartitionRequest;
 
   function createService() {
@@ -68,7 +68,7 @@ describe('AuthService session lifecycle', () => {
     const result = await createService().refresh(refreshToken);
     const update = prisma.authSession.updateMany.mock.calls[0][0];
     const payload = verify(result.accessToken, process.env['JWT_SECRET']!, {
-      issuer: 'clientflow-api',
+      issuer: 'fbappinc-api2',
     }) as Record<string, unknown>;
 
     expect(result.refreshToken).toMatch(/^session-1\./);
@@ -81,7 +81,7 @@ describe('AuthService session lifecycle', () => {
     );
     expect(payload['jti']).toBe(update.data.jti);
     expect(payload['organizationId']).toBe('org-1');
-    expect(payload['appPartition']).toBe('clientflow');
+    expect(payload['appPartition']).toBe('fba-app');
   });
 
   it('rejects a refresh token that loses the rotation race', async () => {

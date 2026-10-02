@@ -90,7 +90,7 @@ async function bootstrap() {
   const stateChangingMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
   app.use((request: Request, response: Response, next: NextFunction) => {
     const hasAuthCookie = Object.keys(request.cookies ?? {}).some((name) =>
-      name.includes('clientflow_session') || name.includes('clientflow_refresh'),
+      name.includes('nxtlvl_session') || name.includes('nxtlvl_refresh'),
     );
     if (!hasAuthCookie || !stateChangingMethods.has(request.method)) {
       next();

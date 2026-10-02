@@ -1,6 +1,6 @@
 -- Run against the production DATABASE_URL in the Neon SQL editor before
 -- resolving any primary migration. This script is read-only.
--- Required platform objects and legacy ClientFlow isolation are reported
+-- Required platform objects and legacy isolated-schema tables are reported
 -- separately because a clean primary database intentionally has no Cf* tables.
 
 SELECT
@@ -98,7 +98,7 @@ ORDER BY migration_name, object_name;
 
 SELECT
   table_name,
-  'legacy_clientflow_table_must_be_absent' AS check_group,
+  'legacy_isolated_table_must_be_absent' AS check_group,
   false AS isolation_ready
 FROM information_schema.tables
 WHERE table_schema = 'public'
@@ -106,8 +106,8 @@ WHERE table_schema = 'public'
 ORDER BY table_name;
 
 SELECT
-  COUNT(*) = 0 AS clientflow_tables_absent,
-  COUNT(*) AS clientflow_table_count
+  COUNT(*) = 0 AS isolated_tables_absent,
+  COUNT(*) AS isolated_table_count
 FROM information_schema.tables
 WHERE table_schema = 'public'
   AND table_name LIKE 'Cf%';

@@ -5,19 +5,11 @@ const baseEnvironment = {
   JWT_SECRET: 'test-secret-that-is-at-least-thirty-two-characters',
 };
 
-describe('environmentSchema database isolation', () => {
-  it('accepts a primary database without ClientFlow database ownership after the final split', () => {
+describe('environmentSchema database validation', () => {
+  it('accepts a valid primary database URL', () => {
     expect(() => environmentSchema.parse({
       ...baseEnvironment,
       DATABASE_URL: 'postgresql://user:secret@primary.example/neondb',
-    })).not.toThrow();
-  });
-
-  it('accepts distinct primary and ClientFlow database targets when they remain configured for legacy rollback', () => {
-    expect(() => environmentSchema.parse({
-      ...baseEnvironment,
-      DATABASE_URL: 'postgresql://user:secret@primary.example/neondb',
-      CLIENTFLOW_DATABASE_URL: 'postgresql://user:secret@clientflow.example/neondb',
     })).not.toThrow();
   });
 });
@@ -25,7 +17,6 @@ describe('environmentSchema database isolation', () => {
 describe('environmentSchema n8n form email settings', () => {
   const databases = {
     DATABASE_URL: 'postgresql://user:secret@primary.example/neondb',
-    CLIENTFLOW_DATABASE_URL: 'postgresql://user:secret@clientflow.example/neondb',
   };
 
   it('defaults the integration to disabled with a 15 second timeout', () => {
@@ -41,7 +32,6 @@ describe('environmentSchema n8n form email settings', () => {
       ...databases,
       N8N_FORM_EMAIL_ENABLED: 'true',
       N8N_FORM_EMAIL_WEBHOOK_URL: 'https://n8n.example/webhook/send-form',
-      N8N_CLIENTFLOW_SECRET: 'shared-secret',
       N8N_FORM_EMAIL_BEARER_TOKEN: 'bearer-token',
       N8N_FORM_EMAIL_TIMEOUT_MS: '5000',
     });
@@ -49,13 +39,13 @@ describe('environmentSchema n8n form email settings', () => {
     expect(environment.N8N_FORM_EMAIL_TIMEOUT_MS).toBe(5000);
   });
 
-  it('requires both webhook credentials when enabled', () => {
+  it('requires webhook credentials when enabled', () => {
     expect(() => environmentSchema.parse({
       ...baseEnvironment,
       ...databases,
       N8N_FORM_EMAIL_ENABLED: 'true',
       N8N_FORM_EMAIL_WEBHOOK_URL: 'https://n8n.example/webhook/send-form',
-    })).toThrow('N8N_CLIENTFLOW_SECRET is required when N8N_FORM_EMAIL_ENABLED is true.');
+    })).toThrow('N8N_FORM_EMAIL_BEARER_TOKEN is required when N8N_FORM_EMAIL_ENABLED is true.');
   });
 
   it('rejects an insecure production webhook URL', () => {

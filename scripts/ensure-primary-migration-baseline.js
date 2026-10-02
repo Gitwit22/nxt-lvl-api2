@@ -40,7 +40,7 @@ function findBaselineProblems(state) {
     ...REQUIRED_CONSTRAINTS
       .filter((name) => !state.constraints.includes(name))
       .map((name) => `constraint:${name}`),
-    ...(state.legacyClientflowTableCount === 0 ? [] : ['legacy-clientflow-tables']),
+    ...(state.legacyIsolatedTableCount === 0 ? [] : ['legacy-isolated-tables']),
     ...(state.platformIdentityReady ? [] : ['platform-identity']),
   ];
 }
@@ -85,7 +85,7 @@ async function inspectBaseline(prisma) {
     columns: columns.map(({ name }) => name),
     indexes: indexes.map(({ name }) => name),
     constraints: constraints.map(({ name }) => name),
-    legacyClientflowTableCount: legacy.count,
+    legacyIsolatedTableCount: legacy.count,
     platformIdentityReady: identity.ready === true,
   };
 }

@@ -25,7 +25,7 @@ describe('AdminJwtGuard', () => {
 
   function context(
     organizationId = 'org-1',
-    tokenPartition = 'clientflow',
+    tokenPartition = 'fba-app',
   ): { context: ExecutionContext; request: PartitionRequest } {
     const token = sign(
       {
@@ -37,12 +37,12 @@ describe('AdminJwtGuard', () => {
         appPartition: tokenPartition,
       },
       process.env['JWT_SECRET']!,
-      { subject: 'admin-1', issuer: 'clientflow-api', expiresIn: '15m' },
+      { subject: 'admin-1', issuer: 'fbappinc-api2', expiresIn: '15m' },
     );
     const request = {
       headers: { authorization: `Bearer ${token}` },
       cookies: {},
-      partition: { slug: 'clientflow', authIssuer: 'clientflow-api' },
+      partition: { slug: 'fba-app', authIssuer: 'fbappinc-api2' },
     } as PartitionRequest;
     return {
       request,
@@ -84,7 +84,7 @@ describe('AdminJwtGuard', () => {
   });
 
   it('rejects a token issued for another application partition', async () => {
-    await expect(guard.canActivate(context('org-1', 'fba-app').context)).rejects.toThrow(
+    await expect(guard.canActivate(context('org-1', 'cinema-studio').context)).rejects.toThrow(
       new UnauthorizedException('Authenticated partition is invalid.'),
     );
     expect(prisma.authSession.findFirst).not.toHaveBeenCalled();

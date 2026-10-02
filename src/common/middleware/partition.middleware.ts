@@ -14,11 +14,7 @@ export class PartitionMiddleware implements NestMiddleware {
       path === '/auth' ||
       path.startsWith('/auth/') ||
       path === '/organizations' ||
-      path.startsWith('/organizations/') ||
-      path === '/admin/cf' ||
-      path.startsWith('/admin/cf/') ||
-      path === '/public/form' ||
-      path.startsWith('/public/form/');
+      path.startsWith('/organizations/');
 
     if (!header?.trim() && requiresExplicitPartition) {
       throw new BadRequestException('X-App-Partition header is required for this route.');

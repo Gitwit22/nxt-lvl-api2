@@ -1,12 +1,11 @@
 import { PrismaClient } from '@prisma/client';
 import { hash } from 'bcrypt';
-import clientflowPartition from '../src/config/partitions/clientflow.partition.json';
 import fbaAppPartition from '../src/config/partitions/fba-app.partition.json';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  const programPartitions = [fbaAppPartition, clientflowPartition];
+  const programPartitions = [fbaAppPartition];
   const programPartition = fbaAppPartition;
   const organization = await prisma.organization.upsert({
     where: { slug: programPartition.organizationSlug },

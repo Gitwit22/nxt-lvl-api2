@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide will get you up and running with Phase 1 (Organization Setup) and Phase 2 (Authentication) for ClientFlow Hub's backend API.
+This guide will get you up and running with Phase 1 (Organization Setup) and Phase 2 (Authentication) for the NXT LVL API backend.
 
 ---
 
@@ -30,7 +30,7 @@ Create a `.env` file in the root directory:
 
 ```bash
 # Database
-DATABASE_URL=postgresql://user:password@localhost:5432/clientflow_dev
+DATABASE_URL=postgresql://user:password@localhost:5432/nxtlvl_dev
 
 # Environment
 NODE_ENV=development
@@ -311,7 +311,7 @@ Opens a visual editor at `http://localhost:5555`
 **Solution**:
 1. Check DATABASE_URL in .env is correct
 2. Verify PostgreSQL is running
-3. Check database exists: `psql -U user -d clientflow_dev -c "\dt"`
+3. Check database exists: `psql -U user -d nxtlvl_dev -c "\dt"`
 
 ### Issue: "Port 3000 already in use"
 **Solution**:

@@ -115,7 +115,7 @@ AFTER:
 ```
 ✅ alg: HS256 (hardcoded, not negotiable)
 ✅ iss: ea-management-api
-✅ aud: clientflow-web
+✅ aud: nxtlvl-web
 ✅ sub: user-id
 ✅ exp: expiration time
 ✅ iat: issued-at time
@@ -213,7 +213,7 @@ BEFORE: ❌ XSS Vulnerable
 localStorage.setItem('token', token)  // Any JS can read this
 
 AFTER: ✅ Secure
-Set-Cookie: __Host-clientflow_session=...;
+Set-Cookie: __Host-nxtlvl_session=...;
   HttpOnly;     // JavaScript cannot access
   Secure;       // HTTPS only
   SameSite=Lax; // CSRF protection
@@ -259,7 +259,7 @@ SENDGRID_API_KEY=...
 - ✅ `SECURITY_ARCHITECTURE.md` includes complete explanation
 
 ### Frontend Review Needed
-- [ ] Check clientflow-hub `.env.example`
+- [ ] Check the frontend app's `.env.example`
 - [ ] Ensure VITE_JWT_SECRET not in browser bundle
 - [ ] Document which variables are safe for frontend
 

@@ -12,7 +12,7 @@ const {
     columns: string[];
     indexes: string[];
     constraints: string[];
-    legacyClientflowTableCount: number;
+    legacyIsolatedTableCount: number;
     platformIdentityReady: boolean;
   }) => string[];
 } = require('../../../scripts/ensure-primary-migration-baseline');
@@ -22,7 +22,7 @@ function completeState() {
     columns: [...REQUIRED_COLUMNS],
     indexes: [...REQUIRED_INDEXES],
     constraints: [...REQUIRED_CONSTRAINTS],
-    legacyClientflowTableCount: 0,
+    legacyIsolatedTableCount: 0,
     platformIdentityReady: true,
   };
 }
@@ -32,15 +32,15 @@ describe('primary migration baseline guard', () => {
     expect(findBaselineProblems(completeState())).toEqual([]);
   });
 
-  it('refuses a partial or mixed ClientFlow baseline', () => {
+  it('refuses a partial or mixed baseline', () => {
     const state = completeState();
     state.columns = state.columns.filter((name) => name !== 'AuthSession.refreshTokenHash');
-    state.legacyClientflowTableCount = 1;
+    state.legacyIsolatedTableCount = 1;
     state.platformIdentityReady = false;
 
     expect(findBaselineProblems(state)).toEqual([
       'column:AuthSession.refreshTokenHash',
-      'legacy-clientflow-tables',
+      'legacy-isolated-tables',
       'platform-identity',
     ]);
   });
