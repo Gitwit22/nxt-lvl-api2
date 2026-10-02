@@ -1086,6 +1086,7 @@ describe('ClientflowService form email delivery', () => {
     })).resolves.toMatchObject({
       success: true,
       status: 'SENT',
+      provider: 'N8N_GMAIL',
       recipientEmail: 'client@example.com',
       sentAt: '2026-09-20T18:00:00.000Z',
     });

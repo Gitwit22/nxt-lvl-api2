@@ -53,16 +53,11 @@ export class FormEmailDeliveryService {
   ) {}
 
   get provider(): FormEmailProvider {
-    return this.config.get('N8N_FORM_EMAIL_ENABLED', { infer: true }) === 'true'
-      ? 'N8N_GMAIL'
-      : 'RESEND';
+    return 'RESEND';
   }
 
   async send(options: FormEmailDeliveryOptions): Promise<FormEmailDeliveryReceipt> {
-    if (this.provider === 'RESEND') {
-      return this.sendWithResend(options);
-    }
-    return this.sendWithN8n(options.payload);
+    return this.sendWithResend(options);
   }
 
   private async sendWithResend(

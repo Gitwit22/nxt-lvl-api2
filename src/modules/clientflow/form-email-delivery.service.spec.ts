@@ -61,40 +61,14 @@ function successReceipt(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe('FormEmailDeliveryService', () => {
+describe('FormEmailDeliveryService final split', () => {
   afterEach(() => {
     jest.restoreAllMocks();
   });
 
-  it('posts the secure form payload with both auth headers and accepts a matching SENT receipt', async () => {
-    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(
-      jsonResponse(successReceipt()),
-    );
-    const { service } = setup();
-
-    await expect(service.send({ payload, programName: 'Accelerator', dueDate: '9/27/2026' }))
-      .resolves.toEqual({
-        provider: 'N8N_GMAIL',
-        sentAt: new Date('2026-09-20T18:00:00.000Z'),
-      });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://n8n.example/webhook/send-form',
-      expect.objectContaining({
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-clientflow-secret': 'shared-secret',
-          Authorization: 'Bearer bearer-token',
-        },
-        body: JSON.stringify(payload),
-      }),
-    );
-  });
-
-  it('uses Resend without calling n8n when the feature is disabled', async () => {
+  it('uses Resend only and never calls the legacy ClientFlow n8n chain', async () => {
     const fetchMock = jest.spyOn(global, 'fetch');
-    const { service, notifications } = setup({ N8N_FORM_EMAIL_ENABLED: 'false' });
+    const { service, notifications } = setup();
 
     await expect(service.send({ payload, programName: 'Accelerator', dueDate: '9/27/2026' }))
       .resolves.toEqual({ provider: 'RESEND', sentAt: expect.any(Date) });
@@ -106,71 +80,13 @@ describe('FormEmailDeliveryService', () => {
     }));
   });
 
-  it('fails configuration safely before calling n8n', async () => {
+  it('fails safely when Resend delivery is unavailable', async () => {
     const fetchMock = jest.spyOn(global, 'fetch');
-    const { service } = setup({ N8N_CLIENTFLOW_SECRET: undefined });
+    const { service, notifications } = setup();
+    notifications.sendFormLink.mockRejectedValueOnce(new Error('resend-down'));
 
     await expect(service.send({ payload, programName: 'Accelerator', dueDate: '9/27/2026' }))
       .rejects.toMatchObject({ code: 'EMAIL_DELIVERY_FAILED' });
     expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    [400, 'N8N_INVALID_REQUEST'],
-    [401, 'N8N_UNAUTHORIZED'],
-    [500, 'N8N_UNAVAILABLE'],
-  ])('maps HTTP %s to %s', async (status, code) => {
-    jest.spyOn(global, 'fetch').mockResolvedValue(jsonResponse({}, status));
-    const { service } = setup();
-
-    await expect(service.send({ payload, programName: 'Accelerator', dueDate: '9/27/2026' }))
-      .rejects.toMatchObject({ code });
-  });
-
-  it.each([
-    successReceipt({ success: false }),
-    successReceipt({ status: 'FAILED' }),
-    successReceipt({ eventId: 'evt-other' }),
-    successReceipt({ clientId: 'client-other' }),
-    successReceipt({ sentAt: 'not-a-date' }),
-  ])('rejects an invalid provider receipt', async (receipt) => {
-    jest.spyOn(global, 'fetch').mockResolvedValue(jsonResponse(receipt));
-    const { service } = setup();
-
-    await expect(service.send({ payload, programName: 'Accelerator', dueDate: '9/27/2026' }))
-      .rejects.toMatchObject({ code: 'INVALID_PROVIDER_RESPONSE' });
-  });
-
-  it('rejects malformed JSON as an invalid provider response', async () => {
-    jest.spyOn(global, 'fetch').mockResolvedValue(new Response('not-json', { status: 200 }));
-    const { service } = setup();
-
-    await expect(service.send({ payload, programName: 'Accelerator', dueDate: '9/27/2026' }))
-      .rejects.toMatchObject({ code: 'INVALID_PROVIDER_RESPONSE' });
-  });
-
-  it('maps network failures without retrying', async () => {
-    const fetchMock = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('offline'));
-    const { service } = setup();
-
-    await expect(service.send({ payload, programName: 'Accelerator', dueDate: '9/27/2026' }))
-      .rejects.toMatchObject({ code: 'N8N_UNAVAILABLE' });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('aborts a provider request at the configured timeout', async () => {
-    jest.useFakeTimers();
-    jest.spyOn(global, 'fetch').mockImplementation((_url, init) => new Promise((_resolve, reject) => {
-      init?.signal?.addEventListener('abort', () => {
-        reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
-      });
-    }));
-    const { service } = setup({ N8N_FORM_EMAIL_TIMEOUT_MS: 25 });
-
-    const delivery = service.send({ payload, programName: 'Accelerator', dueDate: '9/27/2026' });
-    const rejection = expect(delivery).rejects.toMatchObject({ code: 'N8N_TIMEOUT' });
-    await jest.advanceTimersByTimeAsync(25);
-    await rejection;
-    jest.useRealTimers();
   });
 });

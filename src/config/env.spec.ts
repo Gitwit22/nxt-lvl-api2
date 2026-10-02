@@ -6,20 +6,19 @@ const baseEnvironment = {
 };
 
 describe('environmentSchema database isolation', () => {
-  it('accepts distinct primary and ClientFlow database targets', () => {
+  it('accepts a primary database without ClientFlow database ownership after the final split', () => {
+    expect(() => environmentSchema.parse({
+      ...baseEnvironment,
+      DATABASE_URL: 'postgresql://user:secret@primary.example/neondb',
+    })).not.toThrow();
+  });
+
+  it('accepts distinct primary and ClientFlow database targets when they remain configured for legacy rollback', () => {
     expect(() => environmentSchema.parse({
       ...baseEnvironment,
       DATABASE_URL: 'postgresql://user:secret@primary.example/neondb',
       CLIENTFLOW_DATABASE_URL: 'postgresql://user:secret@clientflow.example/neondb',
     })).not.toThrow();
-  });
-
-  it('rejects the same target even when credentials differ', () => {
-    expect(() => environmentSchema.parse({
-      ...baseEnvironment,
-      DATABASE_URL: 'postgresql://primary:one@same.example/neondb',
-      CLIENTFLOW_DATABASE_URL: 'postgresql://clientflow:two@same.example/neondb',
-    })).toThrow('CLIENTFLOW_DATABASE_URL must target a different database than DATABASE_URL.');
   });
 });
 

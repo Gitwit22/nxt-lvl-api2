@@ -1146,6 +1146,7 @@ export class ClientflowService {
       success: true,
       status: 'SENT' as const,
       message: 'Form email sent successfully.',
+      provider: receipt.provider,
       formId: form.id,
       recipientEmail,
       sentAt: receipt.sentAt.toISOString(),

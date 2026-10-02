@@ -15,26 +15,6 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
-      - key: CLIENTFLOW_DATABASE_URL
-        sync: false
-      - key: RESEND_API_KEY
-        sync: false
-      - key: EMAIL_FROM
-        sync: false
-      - key: EMAIL_SEND_ENABLED
-        value: "true"
-      - key: EMAIL_REPLY_TO
-        sync: false
-      - key: N8N_FORM_EMAIL_ENABLED
-        value: "false"
-      - key: N8N_FORM_EMAIL_WEBHOOK_URL
-        sync: false
-      - key: N8N_CLIENTFLOW_SECRET
-        sync: false
-      - key: N8N_FORM_EMAIL_BEARER_TOKEN
-        sync: false
-      - key: N8N_FORM_EMAIL_TIMEOUT_MS
-        value: "15000"
       - key: R2_ACCOUNT_ID
         sync: false
       - key: R2_ACCESS_KEY_ID
@@ -42,8 +22,6 @@ services:
       - key: R2_SECRET_ACCESS_KEY
         sync: false
       - key: R2_BUCKET_NAME
-        sync: false
-      - key: CLIENTFLOW_R2_BUCKET_NAME
         sync: false
       - key: R2_PUBLIC_URL
         sync: false
