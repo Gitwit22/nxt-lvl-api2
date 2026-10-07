@@ -6,6 +6,7 @@ import type { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import { randomUUID } from 'node:crypto';
 import { AppModule } from './app.module';
+import { clipMagicMusicUploadBodyParser } from './common/middleware/clip-magic-upload-body';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import type { PartitionRequest } from './common/interfaces/partition-request.interface';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
@@ -48,6 +49,7 @@ async function bootstrap() {
     }),
   );
   app.use(cookieParser());
+  app.use(clipMagicMusicUploadBodyParser());
   app.use((request: Request, response: Response, next: NextFunction) => {
     const suppliedRequestId = request.header('x-request-id')?.trim();
     const requestId = suppliedRequestId && /^[A-Za-z0-9._-]{1,100}$/.test(suppliedRequestId)
