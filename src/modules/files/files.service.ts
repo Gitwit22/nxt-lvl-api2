@@ -150,6 +150,31 @@ export class FilesService {
     };
   }
 
+  /** Uploads bytes the server has already validated; returns the object's public URL. */
+  async putPublicObject(input: {
+    objectKey: string;
+    body: Buffer;
+    contentType: string;
+    cacheControl?: string;
+  }): Promise<{ bucketName: string; objectKey: string; publicUrl: string }> {
+    if (!this.s3Client) {
+      throw new ServiceUnavailableException('R2 is not configured.');
+    }
+    const publicUrl = this.getPublicUrl(input.objectKey);
+    if (!publicUrl) {
+      throw new ServiceUnavailableException('R2_PUBLIC_URL is not configured.');
+    }
+    const bucketName = this.getBucketName();
+    await this.s3Client.send(new PutObjectCommand({
+      Bucket: bucketName,
+      Key: input.objectKey,
+      Body: input.body,
+      ContentType: input.contentType,
+      CacheControl: input.cacheControl,
+    }));
+    return { bucketName, objectKey: input.objectKey, publicUrl };
+  }
+
   async deleteObject(objectKey: string, bucketName?: string): Promise<void> {
     if (!this.s3Client) {
       throw new ServiceUnavailableException('R2 is not configured.');

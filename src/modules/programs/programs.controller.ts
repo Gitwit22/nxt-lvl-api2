@@ -1,5 +1,7 @@
 ﻿import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
+import { OptionalAdminJwtGuard } from '../../common/guards/optional-admin-jwt.guard';
+import { OrgAdminGuard } from '../../common/guards/org-admin.guard';
 import { ProgramsService } from './programs.service';
 import { CreateProgramDto } from './dto/create-program.dto';
 import { UpdateProgramDto } from './dto/update-program.dto';
@@ -14,6 +16,7 @@ export class ProgramsController {
   ) {}
 
   @Get()
+  @UseGuards(OptionalAdminJwtGuard)
   getPrograms() {
     return this.programsService.listPrograms();
   }
@@ -24,17 +27,18 @@ export class ProgramsController {
   }
 
   @Post('launchpad/state')
+  @UseGuards(AdminJwtGuard, OrgAdminGuard)
   upsertLaunchpadState(@Body() dto: UpsertLaunchpadStateDto) {
     return this.programsService.upsertLaunchpadState(dto);
   }
 
-  @UseGuards(AdminJwtGuard)
+  @UseGuards(AdminJwtGuard, OrgAdminGuard)
   @Post()
   createProgram(@Body() dto: CreateProgramDto) {
     return this.programsService.createProgram(dto);
   }
 
-  @UseGuards(AdminJwtGuard)
+  @UseGuards(AdminJwtGuard, OrgAdminGuard)
   @Patch(':programId')
   updateProgram(@Param('programId') programId: string, @Body() dto: UpdateProgramDto) {
     return this.programsService.updateProgram(programId, dto);

@@ -12,6 +12,7 @@ enum ProgramType {
   youth_database
   event_directory
   vendor_directory
+  suite_app
 }
 
 enum ProgramStatus {

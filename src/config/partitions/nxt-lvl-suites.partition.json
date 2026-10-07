@@ -1,0 +1,11 @@
+{
+  "customerName": "NXT LVL Technology Solutions",
+  "organizationSlug": "nxt-lvl",
+  "organizationName": "NXT LVL Technology Solutions",
+  "primaryProgramSlug": "nxt-lvl-suites",
+  "primaryProgramName": "NXT LVL Suites",
+  "authIssuer": "nxt-lvl-suites-api2",
+  "appName": "NXT LVL Hub",
+  "appUrl": "https://ntlops.com",
+  "storageNamespace": "nxt-lvl-hub"
+}
