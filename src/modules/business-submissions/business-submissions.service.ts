@@ -1,6 +1,7 @@
 ﻿import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateBusinessSubmissionDto } from './dto/create-business-submission.dto';
 
 function withUrlProtocol(value?: string): string | undefined {
@@ -44,7 +45,10 @@ function calculateCompletionPercentage(payload: Record<string, unknown>): number
 
 @Injectable()
 export class BusinessSubmissionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async createSubmission(programSlug: string, dto: CreateBusinessSubmissionDto) {
     const program = await this.prisma.program.findFirst({ where: { slug: programSlug } });
@@ -52,7 +56,7 @@ export class BusinessSubmissionsService {
       throw new NotFoundException('Program not found.');
     }
 
-    return this.prisma.businessSubmission.create({
+    const submission = await this.prisma.businessSubmission.create({
       data: {
         programId: program.id,
         payload: dto.payload as Prisma.InputJsonValue,
@@ -61,6 +65,18 @@ export class BusinessSubmissionsService {
         submittedByPhone: dto.submittedByPhone,
       },
     });
+
+    const payload = dto.payload as Record<string, unknown>;
+    await this.notifications.sendAdminReviewAlert({
+      kind: 'submission',
+      programId: program.id,
+      businessName:
+        typeof payload?.name === 'string' && payload.name.trim()
+          ? payload.name.trim()
+          : (dto.submittedByName ?? 'Unnamed business'),
+    });
+
+    return submission;
   }
 
   listPending() {

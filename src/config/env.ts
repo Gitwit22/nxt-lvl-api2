@@ -27,6 +27,8 @@ export const environmentSchema = z.object({
   EMAIL_SEND_ENABLED: z.string().optional(),
   EMAIL_REPLY_TO: z.string().optional(),
   EMAIL_LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).optional(),
+  // Comma-separated admin addresses alerted when a listing or update awaits review.
+  ADMIN_NOTIFICATION_EMAILS: z.string().optional(),
   APP_URL: z.string().optional(),
   N8N_FORM_EMAIL_ENABLED: z.enum(['true', 'false']).default('false'),
   N8N_FORM_EMAIL_WEBHOOK_URL: z.string().url().optional(),

@@ -14,13 +14,34 @@ import {
   loadNotificationConfig,
 } from '@nxtlvl/notification-core';
 import type { PartitionRequest } from '../../common/interfaces/partition-request.interface';
+import { PrismaService } from '../../prisma/prisma.service';
+
+/** Parses ADMIN_NOTIFICATION_EMAILS ("a@x.com, b@y.com") into a clean recipient list. */
+export function parseAdminRecipients(value: string | undefined): string[] {
+  return (value ?? '')
+    .split(',')
+    .map((email) => email.trim())
+    .filter((email) => email.length > 0);
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 @Injectable({ scope: Scope.REQUEST })
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
   private readonly useCase: SendEmailUseCase | null = null;
 
-  constructor(@Inject(REQUEST) private readonly request: PartitionRequest) {
+  constructor(
+    @Inject(REQUEST) private readonly request: PartitionRequest,
+    private readonly prisma: PrismaService,
+  ) {
     try {
       const config = loadNotificationConfig();
       const provider = new ResendEmailProvider(config);
@@ -217,5 +238,70 @@ export class NotificationsService {
         `— ${partition.appName}`,
       ].join('\n'),
     });
+  }
+
+  /**
+   * Emails the admins in ADMIN_NOTIFICATION_EMAILS that a new listing or listing
+   * update is waiting for review. Never throws: a failed alert must not fail the
+   * public submission that triggered it.
+   */
+  async sendAdminReviewAlert(options: {
+    kind: 'submission' | 'change_request';
+    programId: string;
+    businessName: string;
+  }): Promise<void> {
+    const recipients = parseAdminRecipients(process.env['ADMIN_NOTIFICATION_EMAILS']);
+    if (!this.useCase || recipients.length === 0) return;
+
+    try {
+      const [pendingSubmissions, pendingChangeRequests] = await Promise.all([
+        this.prisma.businessSubmission.count({
+          where: { programId: options.programId, status: 'pending_review' },
+        }),
+        this.prisma.businessChangeRequest.count({
+          where: { status: 'pending_review', business: { programId: options.programId } },
+        }),
+      ]);
+      const totalPending = pendingSubmissions + pendingChangeRequests;
+
+      const partition = this.request.partition;
+      const appUrl = (process.env['APP_URL'] ?? partition.appUrl).replace(/\/$/, '');
+      const adminUrl = `${appUrl}/admin`;
+      const what = options.kind === 'submission' ? 'New listing submitted' : 'Listing update requested';
+      const name = escapeHtml(options.businessName);
+
+      const result = await this.useCase.execute({
+        to: recipients,
+        subject: `${what}: ${options.businessName} (${totalPending} awaiting review)`,
+        html: `
+          <p><strong>${what}:</strong> ${name}</p>
+          <p>
+            You have <strong>${totalPending}</strong> item${totalPending === 1 ? '' : 's'} awaiting review:
+            ${pendingSubmissions} new listing${pendingSubmissions === 1 ? '' : 's'},
+            ${pendingChangeRequests} listing update${pendingChangeRequests === 1 ? '' : 's'}.
+          </p>
+          <p style="margin:24px 0;">
+            <a href="${adminUrl}"
+               style="background:#7A16D6;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;">
+              Review in admin
+            </a>
+          </p>
+          <p>— ${escapeHtml(partition.appName)}</p>
+        `,
+        text: [
+          `${what}: ${options.businessName}`,
+          '',
+          `Awaiting review: ${totalPending} (${pendingSubmissions} new listings, ${pendingChangeRequests} listing updates)`,
+          '',
+          `Review in admin: ${adminUrl}`,
+        ].join('\n'),
+      });
+      if (!result.success && !('skipped' in result)) {
+        this.logger.error(`Admin review alert delivery failed: ${result.error.message}`);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Admin review alert failed: ${msg}`);
+    }
   }
 }
