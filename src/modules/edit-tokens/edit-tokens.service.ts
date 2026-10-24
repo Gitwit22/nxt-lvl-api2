@@ -45,6 +45,12 @@ export class EditTokensService {
       editToken.business.email ??
       undefined;
 
+    await this.notifications.sendAdminReviewAlert({
+      kind: 'change_request',
+      programId: editToken.business.programId,
+      businessName: editToken.business.name,
+    });
+
     if (notifyEmail) {
       await this.notifications
         .sendUpdateRequestSubmitted({
