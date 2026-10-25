@@ -144,6 +144,9 @@ model Business {
   profileCompletionPercentage Int                   @default(0)
   status                      BusinessStatus        @default(draft)
   verificationStatus          VerificationStatus    @default(unclaimed)
+  /// 1-based position on the public Browse page's default grid; null = not featured.
+  /// Written only by the admin featured-businesses endpoint (max 9 per program).
+  featuredRank                Int?
   createdAt                   DateTime              @default(now())
   updatedAt                   DateTime              @updatedAt
 
@@ -154,6 +157,7 @@ model Business {
   fileAssets     FileAsset[]
 
   @@unique([programId, slug])
+  @@unique([programId, featuredRank])
   @@index([programId, status])
   @@index([programId, verificationStatus])
 }
