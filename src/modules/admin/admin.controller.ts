@@ -1,8 +1,9 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, NotFoundException, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, HttpStatus, NotFoundException, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
 import { randomBytes, createHash } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AdminJwtGuard } from '../../common/guards/admin-jwt.guard';
 import { NotificationsService } from '../notifications/notifications.service';
+import { FeaturedBusinessesService } from './featured-businesses.service';
 
 function withUrlProtocol(value: unknown): unknown {
   if (typeof value !== 'string') return value;
@@ -18,6 +19,7 @@ export class AdminController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly featuredBusinesses: FeaturedBusinessesService,
   ) {}
 
   // Fetch all businesses (all statuses) by program slug — used by admin dashboard
@@ -29,6 +31,25 @@ export class AdminController {
       where: { programId: program.id },
       orderBy: { updatedAt: 'desc' },
     });
+  }
+
+  // Ordered businesses pinned to the top of the public Browse page (max 9).
+  @Get('programs/by-slug/:programSlug/featured-businesses')
+  getFeaturedBusinesses(
+    @Param('programSlug') programSlug: string,
+    @Headers('x-org-id') adminOrgId: string | undefined,
+  ) {
+    return this.featuredBusinesses.list(programSlug, adminOrgId);
+  }
+
+  // Replaces the whole ordered selection atomically: { businessIds: string[] }.
+  @Put('programs/by-slug/:programSlug/featured-businesses')
+  replaceFeaturedBusinesses(
+    @Param('programSlug') programSlug: string,
+    @Headers('x-org-id') adminOrgId: string | undefined,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.featuredBusinesses.replace(programSlug, adminOrgId, body?.['businessIds']);
   }
 
   @Get('programs/:programId/businesses')
